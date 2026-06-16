@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Loader2, Plus, Ship, Upload, Download, X, FileText } from 'lucide-react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { ArrowLeft, Loader2, Plus, Ship, Upload, Download, X, FileText, Trash2 } from 'lucide-react';
 import { formatUSD } from '../data/mockData';
-import { useOrder, useShipmentActions, useDocumentActions } from '../hooks/useOrders';
+import { useOrder, useShipmentActions, useDocumentActions, useOrders } from '../hooks/useOrders';
 import { useDocumentUpload } from '../hooks/useDocumentUpload';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabaseClient';
@@ -28,10 +28,12 @@ const EMPTY_SHIPMENT = {
 
 export default function OrderDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { order, loading, error, refetch } = useOrder(id);
   const { createShipment, updateShipment } = useShipmentActions();
   const { updateDocumentStatus } = useDocumentActions();
   const { uploadDocument, getSignedUrl, removeDocument } = useDocumentUpload();
+  const { deleteOrder } = useOrders();
   const { user } = useAuth();
 
   const [shipmentModalOpen, setShipmentModalOpen] = useState(false);
@@ -39,6 +41,7 @@ export default function OrderDetail() {
   const [savingShipment, setSavingShipment] = useState(false);
   const [uploadingDocId, setUploadingDocId] = useState(null);
   const [uploadError, setUploadError] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef(null);
   const pendingDocIdRef = useRef(null);
 
@@ -127,6 +130,23 @@ export default function OrderDetail() {
     refetch();
   }
 
+  async function handleDeleteOrder() {
+    const confirmed = window.confirm(
+      `Delete order ${order.id} for ${order.clients?.company || 'this client'}?\n\nThis will permanently remove the order, its line items, shipment records, and document checklist. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    const { error } = await deleteOrder(order.id);
+    setDeleting(false);
+
+    if (error) {
+      alert(`Couldn't delete order: ${error}`);
+      return;
+    }
+    navigate('/orders');
+  }
+
   async function handleShipmentStatusChange(newStatus) {
     await updateShipment(shipment.id, { status: newStatus });
     refetch();
@@ -143,7 +163,13 @@ export default function OrderDetail() {
           <h1>{order.id}</h1>
           <p>{order.clients?.company || '—'}</p>
         </div>
-        <Badge status={order.status} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Badge status={order.status} />
+          <button className="btn btn-secondary btn-sm" onClick={handleDeleteOrder} disabled={deleting} style={{ color: 'var(--color-danger)' }}>
+            {deleting ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={14} />}
+            Delete Order
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-4" style={{ marginBottom: 20 }}>

@@ -113,7 +113,16 @@ export function useOrders() {
     return { success: true };
   }, [fetchOrders]);
 
-  return { orders, loading, error, refetch: fetchOrders, convertInquiryToOrder, updateOrderStatus, updateOrderProgress };
+  // Deletes an order. Related order_items, shipments, and order_documents
+  // are removed automatically via "on delete cascade" foreign keys.
+  const deleteOrder = useCallback(async (id) => {
+    const { error } = await supabase.from('orders').delete().eq('id', id);
+    if (error) return { error: error.message };
+    setOrders((prev) => prev.filter((o) => o.id !== id));
+    return { success: true };
+  }, []);
+
+  return { orders, loading, error, refetch: fetchOrders, convertInquiryToOrder, updateOrderStatus, updateOrderProgress, deleteOrder };
 }
 
 // ---------- Single order with full detail ----------

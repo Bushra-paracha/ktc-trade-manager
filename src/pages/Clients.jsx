@@ -8,7 +8,18 @@ import { SearchInput, SelectInput } from '../components/Toolbar';
 import { useClients } from '../hooks/useClients';
 
 const STATUSES = ['New', 'Contacted', 'Engaged', 'Negotiating', 'Won', 'Lost', 'Dormant'];
-const SOURCES = ['B2B Platform', 'Trade Fair', 'Referral', 'Inbound Inquiry', 'LinkedIn', 'WhatsApp / Cold Outreach', 'Other'];
+const SOURCES = [
+  'B2B Platform',
+  'B2B Platform — Rice Importers List',
+  'B2B Platform — Supermarkets/Retailers List',
+  'B2B Platform — Amazon/Ecommerce Sellers List',
+  'Trade Fair',
+  'Referral',
+  'Inbound Inquiry',
+  'LinkedIn',
+  'WhatsApp / Cold Outreach',
+  'Other',
+];
 
 const EMPTY_FORM = {
   company: '',
@@ -32,6 +43,7 @@ export default function Clients() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [country, setCountry] = useState('');
+  const [segment, setSegment] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -39,13 +51,27 @@ export default function Clients() {
 
   const countries = [...new Set(clients.map((c) => c.country).filter(Boolean))];
 
+  // Segment is derived from the source field. Anything tagged with
+  // "B2B Platform — X List" is grouped under X; everything else falls
+  // under "Other / Manual".
+  function getSegment(c) {
+    const src = c.source || '';
+    if (src.includes('Rice Importers')) return 'Rice Importers/Distributors';
+    if (src.includes('Supermarkets')) return 'Supermarkets/Retailers';
+    if (src.includes('Amazon')) return 'Amazon/Ecommerce Sellers';
+    return 'Other / Manually Added';
+  }
+
+  const segments = [...new Set(clients.map(getSegment))];
+
   const filtered = clients.filter((c) => {
     const matchesSearch =
       (c.company || '').toLowerCase().includes(search.toLowerCase()) ||
       (c.contact || '').toLowerCase().includes(search.toLowerCase());
     const matchesStatus = !status || c.status === status;
     const matchesCountry = !country || c.country === country;
-    return matchesSearch && matchesStatus && matchesCountry;
+    const matchesSegment = !segment || getSegment(c) === segment;
+    return matchesSearch && matchesStatus && matchesCountry && matchesSegment;
   });
 
   function updateForm(field, value) {
@@ -97,6 +123,20 @@ export default function Clients() {
         </button>
       </div>
 
+      <div className="grid grid-4" style={{ marginBottom: 20 }}>
+        {segments.map((seg) => (
+          <div
+            key={seg}
+            className="stat-card"
+            style={{ cursor: 'pointer', border: segment === seg ? '2px solid var(--color-primary)' : undefined }}
+            onClick={() => setSegment(segment === seg ? '' : seg)}
+          >
+            <div className="stat-card-label">{seg}</div>
+            <div className="stat-card-value" style={{ fontSize: 22 }}>{clients.filter((c) => getSegment(c) === seg).length}</div>
+          </div>
+        ))}
+      </div>
+
       {error && (
         <div className="card" style={{ marginBottom: 16, background: 'var(--color-danger-soft)', border: '1px solid var(--color-danger)' }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -111,6 +151,7 @@ export default function Clients() {
 
       <div className="toolbar">
         <SearchInput value={search} onChange={setSearch} placeholder="Search company or contact..." />
+        <SelectInput value={segment} onChange={setSegment} options={segments} label="All Segments" />
         <SelectInput value={status} onChange={setStatus} options={STATUSES} label="All Statuses" />
         <SelectInput value={country} onChange={setCountry} options={countries} label="All Countries" />
       </div>
@@ -128,7 +169,7 @@ export default function Clients() {
                 <th>Company</th>
                 <th>Contact</th>
                 <th>Country</th>
-                <th>Products of Interest</th>
+                <th>Segment</th>
                 <th>Status</th>
                 <th>Lead Score</th>
                 <th>Revenue</th>
@@ -149,8 +190,10 @@ export default function Clients() {
                     {c.contact}
                     <div className="cell-muted">{c.title}</div>
                   </td>
-                  <td>{c.city}, {c.country}</td>
-                  <td style={{ minWidth: 180 }}>{(c.products_interest || []).join(', ')}</td>
+                  <td>{c.city ? `${c.city}, ` : ''}{c.country}</td>
+                  <td>
+                    <span className="badge badge-gray" style={{ fontSize: 10.5 }}>{getSegment(c)}</span>
+                  </td>
                   <td><Badge status={c.status} /></td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -1,12 +1,21 @@
 import { Link } from 'react-router-dom';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, Trash2 } from 'lucide-react';
 import { formatUSD } from '../data/mockData';
 import { useOrders } from '../hooks/useOrders';
 
 const COLUMNS = ['Confirmed', 'In Production', 'Ready to Ship', 'Shipped', 'Delivered'];
 
 export default function Orders() {
-  const { orders, loading, error } = useOrders();
+  const { orders, loading, error, deleteOrder } = useOrders();
+
+  async function handleDelete(id, company) {
+    const confirmed = window.confirm(
+      `Delete order ${id} for ${company || 'this client'}?\n\nThis will permanently remove the order, its line items, shipment records, and document checklist. This cannot be undone.`
+    );
+    if (!confirmed) return;
+    const { error } = await deleteOrder(id);
+    if (error) alert(`Couldn't delete order: ${error}`);
+  }
 
   return (
     <div>
@@ -79,6 +88,7 @@ export default function Orders() {
                     <th>Incoterm</th>
                     <th>Deadline</th>
                     <th>Status</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -93,10 +103,15 @@ export default function Orders() {
                       <td>{o.incoterm}</td>
                       <td className="cell-muted">{o.shipment_deadline ? new Date(o.shipment_deadline).toLocaleDateString() : '—'}</td>
                       <td>{o.status}</td>
+                      <td>
+                        <button className="icon-btn" aria-label="Delete order" onClick={() => handleDelete(o.id, o.clients?.company)}>
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   {orders.length === 0 && (
-                    <tr><td colSpan={7}><div className="empty-state"><h4>No orders yet</h4><p>Convert an accepted inquiry into an order to get started.</p></div></td></tr>
+                    <tr><td colSpan={8}><div className="empty-state"><h4>No orders yet</h4><p>Convert an accepted inquiry into an order to get started.</p></div></td></tr>
                   )}
                 </tbody>
               </table>

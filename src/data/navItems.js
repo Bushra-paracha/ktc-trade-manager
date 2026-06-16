@@ -10,12 +10,14 @@ import {
   ShoppingCart,
   BarChart3,
   Settings,
+  Inbox,
 } from 'lucide-react';
 
 // Primary nav items shown in sidebar (desktop) and bottom nav (mobile, first 4)
 export const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/clients', label: 'Clients', icon: Users },
+  { to: '/inbox', label: 'Inbox', icon: Inbox },
   { to: '/outreach', label: 'Outreach', icon: Mail },
   { to: '/inquiries', label: 'Inquiries', icon: FileQuestion },
   { to: '/orders', label: 'Orders', icon: ClipboardList },

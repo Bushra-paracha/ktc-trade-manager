@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Loader2, Plus, Ship } from 'lucide-react';
+import { ArrowLeft, Loader2, Plus, Ship, Upload, Download, X, FileText } from 'lucide-react';
 import { formatUSD } from '../data/mockData';
 import { useOrder, useShipmentActions, useDocumentActions } from '../hooks/useOrders';
+import { useDocumentUpload } from '../hooks/useDocumentUpload';
+import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabaseClient';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
@@ -29,10 +31,16 @@ export default function OrderDetail() {
   const { order, loading, error, refetch } = useOrder(id);
   const { createShipment, updateShipment } = useShipmentActions();
   const { updateDocumentStatus } = useDocumentActions();
+  const { uploadDocument, getSignedUrl, removeDocument } = useDocumentUpload();
+  const { user } = useAuth();
 
   const [shipmentModalOpen, setShipmentModalOpen] = useState(false);
   const [shipmentForm, setShipmentForm] = useState(EMPTY_SHIPMENT);
   const [savingShipment, setSavingShipment] = useState(false);
+  const [uploadingDocId, setUploadingDocId] = useState(null);
+  const [uploadError, setUploadError] = useState(null);
+  const fileInputRef = useRef(null);
+  const pendingDocIdRef = useRef(null);
 
   if (loading) {
     return (
@@ -58,6 +66,45 @@ export default function OrderDetail() {
 
   async function handleDocStatusChange(docId, status) {
     await updateDocumentStatus(docId, status);
+    refetch();
+  }
+
+  function triggerUpload(docId) {
+    setUploadError(null);
+    pendingDocIdRef.current = docId;
+    fileInputRef.current?.click();
+  }
+
+  async function handleFileSelected(e) {
+    const file = e.target.files?.[0];
+    const docId = pendingDocIdRef.current;
+    if (!file || !docId) return;
+
+    setUploadingDocId(docId);
+    setUploadError(null);
+    const { error } = await uploadDocument(docId, order.id, file, user?.email);
+    setUploadingDocId(null);
+    e.target.value = '';
+
+    if (error) {
+      setUploadError(error);
+      return;
+    }
+    refetch();
+  }
+
+  async function handleViewDocument(path) {
+    const { url, error } = await getSignedUrl(path);
+    if (error) {
+      alert(`Couldn't open file: ${error}`);
+      return;
+    }
+    window.open(url, '_blank');
+  }
+
+  async function handleRemoveDocument(docId, path) {
+    if (!window.confirm('Remove this uploaded file? The checklist item will reset to Pending.')) return;
+    await removeDocument(docId, path);
     refetch();
   }
 
@@ -181,20 +228,58 @@ export default function OrderDetail() {
               <div className="card-header-sub">{docsComplete} of {docs.length} verified/sent</div>
             </div>
           </div>
+          {uploadError && (
+            <div style={{ color: 'var(--color-danger)', fontSize: 12.5, marginBottom: 10 }}>{uploadError}</div>
+          )}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileSelected}
+            style={{ display: 'none' }}
+            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+          />
           {docs.map((doc) => (
             <div className="timeline-item" key={doc.id}>
               <div className="timeline-body" style={{ flex: 1 }}>
                 <strong>{doc.document_type}</strong>
                 <p>{doc.responsible_party}</p>
+                {doc.file_name && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                    <FileText size={13} color="var(--color-ink-faint)" />
+                    <span className="cell-muted" style={{ fontSize: 11.5 }}>{doc.file_name}</span>
+                  </div>
+                )}
               </div>
-              <select
-                className="select-input"
-                style={{ fontSize: 11.5, padding: '4px 8px' }}
-                value={doc.status}
-                onChange={(e) => handleDocStatusChange(doc.id, e.target.value)}
-              >
-                {DOC_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {doc.file_path ? (
+                  <>
+                    <button className="icon-btn" aria-label="View document" title="View / download" onClick={() => handleViewDocument(doc.file_path)}>
+                      <Download size={14} />
+                    </button>
+                    <button className="icon-btn" aria-label="Remove document" title="Remove file" onClick={() => handleRemoveDocument(doc.id, doc.file_path)}>
+                      <X size={14} />
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="icon-btn"
+                    aria-label="Upload document"
+                    title="Upload file"
+                    onClick={() => triggerUpload(doc.id)}
+                    disabled={uploadingDocId === doc.id}
+                  >
+                    {uploadingDocId === doc.id ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Upload size={14} />}
+                  </button>
+                )}
+                <select
+                  className="select-input"
+                  style={{ fontSize: 11.5, padding: '4px 8px' }}
+                  value={doc.status}
+                  onChange={(e) => handleDocStatusChange(doc.id, e.target.value)}
+                >
+                  {DOC_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
             </div>
           ))}
           {docs.length === 0 && (

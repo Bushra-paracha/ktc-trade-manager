@@ -3,6 +3,7 @@ import { Package, Loader2, AlertCircle, Plus, Pencil, Trash2 } from 'lucide-reac
 import { SearchInput, SelectInput } from '../components/Toolbar';
 import Modal from '../components/Modal';
 import { useProducts } from '../hooks/useProducts';
+import { useAuth } from '../hooks/useAuth';
 
 const CATEGORIES = ['Basmati', 'Non-Basmati', 'Other'];
 
@@ -18,6 +19,7 @@ const EMPTY_FORM = {
 
 export default function Products() {
   const { products, loading, error, addProduct, updateProduct, deleteProduct } = useProducts();
+  const { isAdminOrDirector } = useAuth();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
 
@@ -139,9 +141,11 @@ export default function Products() {
                   <button className="icon-btn" aria-label="Edit product" onClick={() => openEdit(p)}>
                     <Pencil size={15} />
                   </button>
-                  <button className="icon-btn" aria-label="Delete product" onClick={() => handleDelete(p.id, p.name)}>
-                    <Trash2 size={15} />
-                  </button>
+                  {isAdminOrDirector && (
+                    <button className="icon-btn" aria-label="Delete product" onClick={() => handleDelete(p.id, p.name)}>
+                      <Trash2 size={15} />
+                    </button>
+                  )}
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

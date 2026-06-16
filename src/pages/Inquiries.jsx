@@ -13,6 +13,8 @@ import { useOrders } from '../hooks/useOrders';
 import { generateProformaInvoice } from '../lib/generateProformaInvoice';
 import { calculateInquiryTotal, calculateLineItem, INCOTERMS, PAYMENT_TERMS, CERTIFICATIONS, INQUIRY_STATUSES } from '../lib/pricingEngine';
 
+import { useAuth } from '../hooks/useAuth';
+
 const EMPTY_ITEM = () => ({
   product_id: '',
   product_name: '',
@@ -31,6 +33,7 @@ const EMPTY_ITEM = () => ({
 
 export default function Inquiries() {
   const navigate = useNavigate();
+  const { isAdminOrDirector } = useAuth();
   const { inquiries, loading, error, createInquiry, updateInquiryStatus, deleteInquiry } = useInquiries();
   const { clients } = useClients();
   const { products } = useProducts();
@@ -162,9 +165,13 @@ export default function Inquiries() {
           <h1>Inquiries</h1>
           <p>{inquiries.length} inquiries · {formatUSD(totalValue)} total pipeline value</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setModalOpen(true)}>
-          <Plus /> New Inquiry
-        </button>
+        {isAdminOrDirector ? (
+          <button className="btn btn-primary" onClick={() => setModalOpen(true)}>
+            <Plus /> New Inquiry
+          </button>
+        ) : (
+          <span className="cell-muted" style={{ fontSize: 12.5, fontStyle: 'italic' }}>Only Directors/Admins can create new pricing quotes</span>
+        )}
       </div>
 
       {error && (
@@ -245,9 +252,11 @@ export default function Inquiries() {
                       <button className="icon-btn" aria-label="Download Proforma Invoice" onClick={() => generateProformaInvoice(i)}>
                         <FileDown size={16} />
                       </button>
-                      <button className="icon-btn" aria-label="Delete inquiry" onClick={() => handleDelete(i.id)}>
-                        <Trash2 size={16} />
-                      </button>
+                      {isAdminOrDirector && (
+                        <button className="icon-btn" aria-label="Delete inquiry" onClick={() => handleDelete(i.id)}>
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

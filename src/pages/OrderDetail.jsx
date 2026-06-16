@@ -34,7 +34,7 @@ export default function OrderDetail() {
   const { updateDocumentStatus } = useDocumentActions();
   const { uploadDocument, getSignedUrl, removeDocument } = useDocumentUpload();
   const { deleteOrder } = useOrders();
-  const { user } = useAuth();
+  const { user, isAdminOrDirector } = useAuth();
 
   const [shipmentModalOpen, setShipmentModalOpen] = useState(false);
   const [shipmentForm, setShipmentForm] = useState(EMPTY_SHIPMENT);
@@ -165,10 +165,12 @@ export default function OrderDetail() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Badge status={order.status} />
-          <button className="btn btn-secondary btn-sm" onClick={handleDeleteOrder} disabled={deleting} style={{ color: 'var(--color-danger)' }}>
-            {deleting ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={14} />}
-            Delete Order
-          </button>
+          {isAdminOrDirector && (
+            <button className="btn btn-secondary btn-sm" onClick={handleDeleteOrder} disabled={deleting} style={{ color: 'var(--color-danger)' }}>
+              {deleting ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={14} />}
+              Delete Order
+            </button>
+          )}
         </div>
       </div>
 

@@ -6,6 +6,7 @@ import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import { SearchInput, SelectInput } from '../components/Toolbar';
 import { useClients } from '../hooks/useClients';
+import { useAuth } from '../hooks/useAuth';
 
 const STATUSES = ['New', 'Contacted', 'Engaged', 'Negotiating', 'Won', 'Lost', 'Dormant'];
 const SOURCES = [
@@ -40,6 +41,7 @@ const EMPTY_FORM = {
 
 export default function Clients() {
   const { clients, loading, error, addClient, deleteClient } = useClients();
+  const { isAdminOrDirector } = useAuth();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [country, setCountry] = useState('');
@@ -210,9 +212,11 @@ export default function Clients() {
                       <Link to={`/clients/${c.id}`} className="icon-btn" aria-label="View client">
                         <ArrowUpRight size={16} />
                       </Link>
-                      <button className="icon-btn" aria-label="Delete client" onClick={() => handleDelete(c.id, c.company)}>
-                        <Trash2 size={16} />
-                      </button>
+                      {isAdminOrDirector && (
+                        <button className="icon-btn" aria-label="Delete client" onClick={() => handleDelete(c.id, c.company)}>
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

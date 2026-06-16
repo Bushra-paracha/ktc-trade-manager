@@ -39,11 +39,14 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut();
   }
 
+  const isAdminOrDirector = profile?.role === 'Admin / Owner' || profile?.role === 'Director';
+
   const value = {
     session,
     user: session?.user || null,
     profile,
     loading: session === undefined,
+    isAdminOrDirector,
     signIn,
     signOut,
   };

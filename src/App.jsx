@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { useAuth } from './hooks/useAuth';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
@@ -26,7 +27,9 @@ export default function App() {
   const { user, loading } = useAuth();
 
   return (
-    <Routes>
+    <>
+      <SpeedInsights />
+      <Routes>
       {/* Public route, no login required. Anyone with this link
           (from the website or LinkedIn) can submit an inquiry. */}
       <Route path="/quote" element={<PublicInquiry />} />
@@ -71,5 +74,6 @@ export default function App() {
         }
       />
     </Routes>
+    </>
   );
 }

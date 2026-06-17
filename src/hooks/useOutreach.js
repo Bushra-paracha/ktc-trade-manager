@@ -29,13 +29,15 @@ export function useEmailMessages() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [checkingReplies, setCheckingReplies] = useState(false);
+  const [checkError, setCheckError] = useState(null);
 
   const fetchMessages = useCallback(async () => {
     setLoading(true);
     setError(null);
     const { data, error } = await supabase
       .from('email_messages')
-      .select('*, clients(company, country)')
+      .select('*, clients(company, country), email_replies(*)')
       .order('created_at', { ascending: false });
 
     if (error) setError(error.message);
@@ -47,7 +49,41 @@ export function useEmailMessages() {
     fetchMessages();
   }, [fetchMessages]);
 
-  return { messages, loading, error, refetch: fetchMessages };
+  // Calls the check-email-replies Edge Function, which connects to the
+  // KTC mailboxes via IMAP and matches new replies to sent messages.
+  const checkForReplies = useCallback(async () => {
+    setCheckingReplies(true);
+    setCheckError(null);
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/check-email-replies`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setCheckError(data.error || 'Failed to check replies');
+      } else {
+        await fetchMessages();
+      }
+      setCheckingReplies(false);
+      return data;
+    } catch (err) {
+      setCheckError(err.message);
+      setCheckingReplies(false);
+      return { error: err.message };
+    }
+  }, [fetchMessages]);
+
+  return { messages, loading, error, refetch: fetchMessages, checkForReplies, checkingReplies, checkError };
 }
 
 // Replaces {{company}}, {{contact}} etc in a template string with client data

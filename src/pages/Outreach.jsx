@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Mail, MousePointerClick, MessageSquareReply, AlertTriangle, Send, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Mail, MousePointerClick, MessageSquareReply, AlertTriangle, Send, Loader2, CheckCircle2, XCircle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
@@ -10,8 +10,10 @@ const SENDERS = ['exports@kassamtradingcompany.com', 'sales@kassamtradingcompany
 
 export default function Outreach() {
   const { clients, loading: clientsLoading } = useClients();
-  const { messages, loading: messagesLoading, error: messagesError, refetch } = useEmailMessages();
+  const { messages, loading: messagesLoading, error: messagesError, refetch, checkForReplies, checkingReplies, checkError } = useEmailMessages();
   const { templates, loading: templatesLoading } = useEmailTemplates();
+
+  const [expandedId, setExpandedId] = useState(null);
 
   const [composeOpen, setComposeOpen] = useState(false);
   const [selectedClientIds, setSelectedClientIds] = useState([]);
@@ -88,10 +90,23 @@ export default function Outreach() {
           <h1>Outreach &amp; Email Campaigns</h1>
           <p>{totals.total} emails tracked · sent via Brevo</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setComposeOpen(true)}>
-          <Send /> Compose Email
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary" onClick={checkForReplies} disabled={checkingReplies}>
+            {checkingReplies ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={16} />}
+            Check for Replies
+          </button>
+          <button className="btn btn-primary" onClick={() => setComposeOpen(true)}>
+            <Send /> Compose Email
+          </button>
+        </div>
       </div>
+
+      {checkError && (
+        <div className="card" style={{ marginBottom: 16, background: 'var(--color-danger-soft)', border: '1px solid var(--color-danger)' }}>
+          <strong style={{ color: 'var(--color-danger)' }}>Couldn't check for replies</strong>
+          <p style={{ margin: '4px 0 0', fontSize: 13 }}>{checkError}</p>
+        </div>
+      )}
 
       {messagesError && (
         <div className="card" style={{ marginBottom: 16, background: 'var(--color-danger-soft)', border: '1px solid var(--color-danger)' }}>
@@ -128,18 +143,48 @@ export default function Outreach() {
               </tr>
             </thead>
             <tbody>
-              {messages.map((m) => (
-                <tr key={m.id}>
-                  <td className="cell-strong">{m.to_email}</td>
-                  <td>{m.clients?.company || '—'}</td>
-                  <td style={{ minWidth: 220 }}>{m.subject}</td>
-                  <td className="cell-muted">{m.sender_email}</td>
-                  <td><Badge status={m.status} /></td>
-                  <td>{m.open_count || 0}</td>
-                  <td>{m.click_count || 0}</td>
-                  <td className="cell-muted">{m.sent_at ? new Date(m.sent_at).toLocaleString() : '—'}</td>
-                </tr>
-              ))}
+              {messages.map((m) => {
+                const replies = m.email_replies || [];
+                const hasReplies = replies.length > 0;
+                const isExpanded = expandedId === m.id;
+                return (
+                  <>
+                    <tr key={m.id} style={hasReplies ? { cursor: 'pointer' } : undefined} onClick={() => hasReplies && setExpandedId(isExpanded ? null : m.id)}>
+                      <td className="cell-strong">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {hasReplies && (isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
+                          {m.to_email}
+                        </div>
+                      </td>
+                      <td>{m.clients?.company || '—'}</td>
+                      <td style={{ minWidth: 220 }}>{m.subject}</td>
+                      <td className="cell-muted">{m.sender_email}</td>
+                      <td><Badge status={m.status} /></td>
+                      <td>{m.open_count || 0}</td>
+                      <td>{m.click_count || 0}</td>
+                      <td className="cell-muted">{m.sent_at ? new Date(m.sent_at).toLocaleString() : '—'}</td>
+                    </tr>
+                    {isExpanded && hasReplies && (
+                      <tr key={`${m.id}-replies`}>
+                        <td colSpan={8} style={{ background: 'var(--color-surface-alt)', padding: 0 }}>
+                          <div style={{ padding: '12px 20px' }}>
+                            {replies.map((r) => (
+                              <div key={r.id} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid var(--color-border)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                  <strong style={{ fontSize: 12.5 }}>Reply from {r.from_email}</strong>
+                                  <span className="cell-muted">{new Date(r.received_at).toLocaleString()}</span>
+                                </div>
+                                {r.subject && <div className="cell-muted" style={{ marginBottom: 4 }}>Subject: {r.subject}</div>}
+                                <p style={{ fontSize: 13, whiteSpace: 'pre-wrap', margin: 0 }}>{r.body_text}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                );
+              })}
               {messages.length === 0 && (
                 <tr>
                   <td colSpan={8}>

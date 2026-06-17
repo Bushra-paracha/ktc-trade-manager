@@ -71,9 +71,15 @@ Deno.serve(async (req) => {
       }),
     });
 
-    const brevoData = await brevoRes.json();
+    const brevoData = await brevoRes.json().catch(async (parseErr) => {
+      const rawText = await brevoRes.clone().text().catch(() => '<unreadable>');
+      console.error('Failed to parse Brevo response as JSON:', parseErr.message, 'Raw response:', rawText);
+      return { parseError: parseErr.message, rawText };
+    });
 
     if (!brevoRes.ok) {
+      console.error('Brevo API error:', brevoRes.status, JSON.stringify(brevoData));
+
       // Mark as failed
       await supabase
         .from('email_messages')

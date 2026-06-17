@@ -1,17 +1,19 @@
 import { useState, useMemo } from 'react';
-import { Mail, MousePointerClick, MessageSquareReply, AlertTriangle, Send, Loader2, CheckCircle2, XCircle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Mail, MousePointerClick, MessageSquareReply, AlertTriangle, Send, Loader2, CheckCircle2, XCircle, RefreshCw, ChevronDown, ChevronUp, Download } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import { useClients } from '../hooks/useClients';
-import { useEmailMessages, useEmailTemplates, renderTemplate, sendOutreachEmails } from '../hooks/useOutreach';
+import { useEmailMessages, useEmailTemplates, renderTemplate, sendOutreachEmails, syncTemplatesFromBrevo } from '../hooks/useOutreach';
 
 const SENDERS = ['exports@kassamtradingcompany.com', 'sales@kassamtradingcompany.com'];
 
 export default function Outreach() {
   const { clients, loading: clientsLoading } = useClients();
   const { messages, loading: messagesLoading, error: messagesError, refetch, checkForReplies, checkingReplies, checkError } = useEmailMessages();
-  const { templates, loading: templatesLoading } = useEmailTemplates();
+  const { templates, loading: templatesLoading, refetch: refetchTemplates } = useEmailTemplates();
+  const [syncingTemplates, setSyncingTemplates] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
 
   const [expandedId, setExpandedId] = useState(null);
 
@@ -81,6 +83,20 @@ export default function Outreach() {
     setSubject('');
     setBody('');
     setSendResults(null);
+  }
+
+  async function handleSyncTemplates() {
+    setSyncingTemplates(true);
+    setSyncResult(null);
+    const { data, error } = await syncTemplatesFromBrevo();
+    setSyncingTemplates(false);
+
+    if (error) {
+      setSyncResult({ error });
+      return;
+    }
+    setSyncResult({ data });
+    refetchTemplates();
   }
 
   return (
@@ -212,10 +228,24 @@ export default function Outreach() {
 
           {/* Template picker */}
           <FormRow label="Start from a template (optional)">
-            <select className="select-input" value={templateId} onChange={(e) => applyTemplate(e.target.value)} disabled={templatesLoading}>
-              <option value="">— Blank email —</option>
-              {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <select className="select-input" style={{ flex: 1 }} value={templateId} onChange={(e) => applyTemplate(e.target.value)} disabled={templatesLoading}>
+                <option value="">— Blank email —</option>
+                {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={handleSyncTemplates} disabled={syncingTemplates} title="Pull in any templates created in Brevo's own editor">
+                {syncingTemplates ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Download size={14} />}
+                Sync from Brevo
+              </button>
+            </div>
+            {syncResult?.error && (
+              <span style={{ color: 'var(--color-danger)', fontSize: 12 }}>{syncResult.error}</span>
+            )}
+            {syncResult?.data && (
+              <span style={{ color: 'var(--color-success)', fontSize: 12 }}>
+                Synced: {syncResult.data.created} new, {syncResult.data.updated} updated{syncResult.data.errors?.length ? `, ${syncResult.data.errors.length} errors` : ''}
+              </span>
+            )}
           </FormRow>
 
           {/* Recipients */}

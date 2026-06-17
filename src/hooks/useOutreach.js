@@ -9,19 +9,24 @@ export function useEmailTemplates() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    supabase
+  const fetchTemplates = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const { data, error } = await supabase
       .from('email_templates')
       .select('*')
-      .order('created_at', { ascending: true })
-      .then(({ data, error }) => {
-        if (error) setError(error.message);
-        else setTemplates(data || []);
-        setLoading(false);
-      });
+      .order('created_at', { ascending: true });
+
+    if (error) setError(error.message);
+    else setTemplates(data || []);
+    setLoading(false);
   }, []);
 
-  return { templates, loading, error };
+  useEffect(() => {
+    fetchTemplates();
+  }, [fetchTemplates]);
+
+  return { templates, loading, error, refetch: fetchTemplates };
 }
 
 // ---------- Campaigns + Messages ----------
@@ -86,7 +91,26 @@ export function useEmailMessages() {
   return { messages, loading, error, refetch: fetchMessages, checkForReplies, checkingReplies, checkError };
 }
 
-// Replaces {{company}}, {{contact}} etc in a template string with client data
+// Calls the sync-brevo-templates Edge Function to pull in any templates
+// created directly in Brevo's own template editor.
+export async function syncTemplatesFromBrevo() {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-brevo-templates`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    return { error: data.error || 'Failed to sync templates' };
+  }
+  return { data };
+}
 export function renderTemplate(str, client) {
   if (!str) return '';
   return str

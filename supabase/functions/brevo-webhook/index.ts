@@ -18,15 +18,22 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Maps Brevo event names to email_messages columns/status values
+// Maps Brevo event names to email_messages columns/status values.
+// Brevo has used both snake_case (hard_bounce) and camelCase (hardBounce)
+// naming across API versions, so both are mapped here for safety.
 const EVENT_MAP = {
   delivered: { status: 'Delivered', timestampField: 'delivered_at' },
   opened: { status: 'Opened', timestampField: 'opened_at', countField: 'open_count' },
+  uniqueOpened: { status: 'Opened', timestampField: 'opened_at', countField: 'open_count' },
   click: { status: 'Clicked', timestampField: 'clicked_at', countField: 'click_count' },
-  hard_bounce: { status: 'Bounced', timestampField: 'bounced_at' },
-  soft_bounce: { status: 'Bounced', timestampField: 'bounced_at' },
-  blocked: { status: 'Bounced', timestampField: 'bounced_at' },
-  spam: { status: 'Bounced', timestampField: 'bounced_at' },
+  hard_bounce: { status: 'Bounced', timestampField: 'bounced_at', captureReason: true },
+  hardBounce: { status: 'Bounced', timestampField: 'bounced_at', captureReason: true },
+  soft_bounce: { status: 'Bounced', timestampField: 'bounced_at', captureReason: true },
+  softBounce: { status: 'Bounced', timestampField: 'bounced_at', captureReason: true },
+  blocked: { status: 'Bounced', timestampField: 'bounced_at', captureReason: true },
+  invalid: { status: 'Bounced', timestampField: 'bounced_at', captureReason: true },
+  spam: { status: 'Bounced', timestampField: 'bounced_at', captureReason: true },
+  error: { status: 'Bounced', timestampField: 'bounced_at', captureReason: true },
 };
 
 // Status priority — don't downgrade a "better" status to a "worse" one
@@ -99,6 +106,17 @@ Deno.serve(async (req) => {
 
       if (mapping.countField) {
         update[mapping.countField] = (existing[mapping.countField] || 0) + 1;
+      }
+
+      if (mapping.captureReason) {
+        // Brevo includes the failure reason under different keys depending
+        // on the event/version; check the common ones and fall back gracefully.
+        const reason = event.reason || event.error || event.details || event['tag'] || null;
+        if (reason) {
+          update.bounce_reason = String(reason);
+        } else {
+          update.bounce_reason = `${eventType} (no detailed reason provided by Brevo)`;
+        }
       }
 
       const { error: updateError } = await supabase

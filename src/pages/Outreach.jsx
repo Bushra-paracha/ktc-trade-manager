@@ -19,6 +19,7 @@ export default function Outreach() {
 
   const [composeOpen, setComposeOpen] = useState(false);
   const [selectedClientIds, setSelectedClientIds] = useState([]);
+  const [recipientSearch, setRecipientSearch] = useState('');
   const [templateId, setTemplateId] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
@@ -59,8 +60,31 @@ export default function Outreach() {
 
   const selectedClients = clients.filter((c) => selectedClientIds.includes(c.id) && c.email);
 
+  const filteredRecipientClients = useMemo(() => {
+    const q = recipientSearch.trim().toLowerCase();
+    if (!q) return clients;
+    return clients.filter((c) => {
+      const company = (c.company || '').toLowerCase();
+      const country = (c.country || '').toLowerCase();
+      const products = (c.products_interest || []).join(' ').toLowerCase();
+      return company.includes(q) || country.includes(q) || products.includes(q);
+    });
+  }, [clients, recipientSearch]);
+
   async function handleSend() {
     if (selectedClients.length === 0 || !subject || !body) return;
+
+    const recentlyContactedNames = selectedClients
+      .filter((c) => c.last_contacted_at && (Date.now() - new Date(c.last_contacted_at).getTime()) / (1000 * 60 * 60 * 24) < 3)
+      .map((c) => c.company || c.email);
+
+    if (recentlyContactedNames.length > 0) {
+      const confirmed = window.confirm(
+        `${recentlyContactedNames.length} recipient(s) were contacted within the last 3 days:\n\n${recentlyContactedNames.slice(0, 10).join(', ')}${recentlyContactedNames.length > 10 ? '...' : ''}\n\nSending again now risks looking like spam. Continue anyway?`
+      );
+      if (!confirmed) return;
+    }
+
     setSending(true);
     setSendResults(null);
 
@@ -79,6 +103,7 @@ export default function Outreach() {
   function closeCompose() {
     setComposeOpen(false);
     setSelectedClientIds([]);
+    setRecipientSearch('');
     setTemplateId('');
     setSubject('');
     setBody('');
@@ -162,20 +187,25 @@ export default function Outreach() {
               {messages.map((m) => {
                 const replies = m.email_replies || [];
                 const hasReplies = replies.length > 0;
+                const hasBounceReason = m.status === 'Bounced' && m.bounce_reason;
+                const isExpandable = hasReplies || hasBounceReason;
                 const isExpanded = expandedId === m.id;
                 return (
                   <>
-                    <tr key={m.id} style={hasReplies ? { cursor: 'pointer' } : undefined} onClick={() => hasReplies && setExpandedId(isExpanded ? null : m.id)}>
+                    <tr key={m.id} style={isExpandable ? { cursor: 'pointer' } : undefined} onClick={() => isExpandable && setExpandedId(isExpanded ? null : m.id)}>
                       <td className="cell-strong">
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {hasReplies && (isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
+                          {isExpandable && (isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
                           {m.to_email}
                         </div>
                       </td>
                       <td>{m.clients?.company || '—'}</td>
                       <td style={{ minWidth: 220 }}>{m.subject}</td>
                       <td className="cell-muted">{m.sender_email}</td>
-                      <td><Badge status={m.status} /></td>
+                      <td>
+                        <Badge status={m.status} />
+                        {hasBounceReason && <div className="cell-muted" style={{ fontSize: 11, marginTop: 3 }}>Click for reason</div>}
+                      </td>
                       <td>{m.open_count || 0}</td>
                       <td>{m.click_count || 0}</td>
                       <td className="cell-muted">{m.sent_at ? new Date(m.sent_at).toLocaleString() : '—'}</td>
@@ -195,6 +225,14 @@ export default function Outreach() {
                               </div>
                             ))}
                           </div>
+                        </td>
+                      </tr>
+                    )}
+                    {isExpanded && hasBounceReason && (
+                      <tr key={`${m.id}-bounce`}>
+                        <td colSpan={8} style={{ background: 'var(--color-danger-soft)', padding: '12px 20px' }}>
+                          <strong style={{ fontSize: 12.5, color: 'var(--color-danger)' }}>Why this bounced:</strong>
+                          <p style={{ fontSize: 13, margin: '4px 0 0', color: 'var(--color-ink)' }}>{m.bounce_reason}</p>
                         </td>
                       </tr>
                     )}
@@ -257,24 +295,67 @@ export default function Outreach() {
 
           {/* Recipients */}
           <FormRow label={`Recipients (${selectedClients.length} selected)`}>
-            <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', maxHeight: 180, overflowY: 'auto' }}>
+            <input
+              className="select-input"
+              style={{ marginBottom: 8 }}
+              placeholder="Search by company, country, or product..."
+              value={recipientSearch}
+              onChange={(e) => setRecipientSearch(e.target.value)}
+            />
+            <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', maxHeight: 240, overflowY: 'auto' }}>
               {clientsLoading && <div style={{ padding: 12 }} className="cell-muted">Loading clients...</div>}
-              {clients.map((c) => (
-                <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 13, cursor: c.email ? 'pointer' : 'not-allowed', opacity: c.email ? 1 : 0.5 }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedClientIds.includes(c.id)}
-                    onChange={() => toggleClient(c.id)}
-                    disabled={!c.email}
-                  />
-                  <div style={{ flex: 1 }}>
-                    <div className="cell-strong">{c.company}</div>
-                    <div className="cell-muted">{c.email || 'No email on file'}</div>
-                  </div>
-                  <Badge status={c.status} />
-                </label>
-              ))}
+              {filteredRecipientClients.map((c) => {
+                const missingCompany = !c.company || !c.company.trim();
+                const products = (c.products_interest || []).filter(Boolean);
+                const daysSinceContact = c.last_contacted_at
+                  ? Math.floor((Date.now() - new Date(c.last_contacted_at).getTime()) / (1000 * 60 * 60 * 24))
+                  : null;
+                const recentlyContacted = daysSinceContact !== null && daysSinceContact < 3;
+                return (
+                  <label key={c.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 13, cursor: c.email ? 'pointer' : 'not-allowed', opacity: c.email ? 1 : 0.5, background: recentlyContacted ? 'var(--color-accent-soft)' : undefined }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedClientIds.includes(c.id)}
+                      onChange={() => toggleClient(c.id)}
+                      disabled={!c.email}
+                      style={{ marginTop: 2 }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div className="cell-strong" style={{ color: missingCompany ? 'var(--color-danger)' : undefined }}>
+                        {missingCompany ? '⚠ No company name on file' : c.company}
+                      </div>
+                      <div className="cell-muted">{c.email || 'No email on file'} {c.country ? `· ${c.country}` : ''}</div>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
+                        {products.map((p, i) => (
+                          <span key={i} className="badge badge-gray" style={{ fontSize: 10 }}>{p}</span>
+                        ))}
+                        {daysSinceContact === null ? (
+                          <span className="cell-muted" style={{ fontSize: 11 }}>Never contacted</span>
+                        ) : (
+                          <span style={{ fontSize: 11, color: recentlyContacted ? 'var(--color-warning)' : 'var(--color-ink-faint)', fontWeight: recentlyContacted ? 700 : 400 }}>
+                            {recentlyContacted ? `⚠ Contacted ${daysSinceContact}d ago` : `Last contacted ${daysSinceContact}d ago`}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <Badge status={c.status} />
+                  </label>
+                );
+              })}
+              {filteredRecipientClients.length === 0 && !clientsLoading && (
+                <div style={{ padding: 12 }} className="cell-muted">No clients match your search.</div>
+              )}
             </div>
+            {selectedClients.some((c) => !c.company || !c.company.trim()) && (
+              <div style={{ color: 'var(--color-danger)', fontSize: 12, marginTop: 6 }}>
+                ⚠ One or more selected recipients have no company name — {'{{company}}'} will appear blank for them. Consider fixing their record before sending.
+              </div>
+            )}
+            {selectedClients.some((c) => c.last_contacted_at && (Date.now() - new Date(c.last_contacted_at).getTime()) / (1000 * 60 * 60 * 24) < 3) && (
+              <div style={{ color: 'var(--color-warning)', fontSize: 12, marginTop: 6 }}>
+                ⚠ One or more selected recipients were contacted within the last 3 days — sending again now risks looking like spam. Recently-contacted rows are highlighted above.
+              </div>
+            )}
           </FormRow>
 
           {/* Subject */}

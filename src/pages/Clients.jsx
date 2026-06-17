@@ -248,6 +248,7 @@ export default function Clients() {
                 <th>Country</th>
                 <th>Segment</th>
                 <th>Status</th>
+                <th>Last Contacted</th>
                 <th>Lead Score</th>
                 <th>Revenue</th>
                 <th>Assigned To</th>
@@ -272,6 +273,22 @@ export default function Clients() {
                     <span className="badge badge-gray" style={{ fontSize: 10.5 }}>{getSegment(c)}</span>
                   </td>
                   <td><Badge status={c.status} /></td>
+                  <td>
+                    {c.last_contacted_at ? (
+                      (() => {
+                        const days = Math.floor((Date.now() - new Date(c.last_contacted_at).getTime()) / (1000 * 60 * 60 * 24));
+                        const dueForFollowup = days >= 14;
+                        return (
+                          <span style={{ fontSize: 12.5, color: dueForFollowup ? 'var(--color-warning)' : 'var(--color-ink-soft)', fontWeight: dueForFollowup ? 700 : 400 }}>
+                            {days === 0 ? 'Today' : `${days}d ago`}
+                            {dueForFollowup && ' · Follow-up due'}
+                          </span>
+                        );
+                      })()
+                    ) : (
+                      <span className="cell-muted" style={{ fontSize: 12.5 }}>Never</span>
+                    )}
+                  </td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div className="progress-track" style={{ width: 50 }}>

@@ -74,7 +74,54 @@ export function useClients() {
     return { success: true };
   }, []);
 
-  return { clients, loading, error, refetch: fetchClients, addClient, updateClient, deleteClient };
+  // Bulk-imports an array of client objects (e.g. parsed from a CSV).
+  // Generates sequential IDs and inserts them all in one request.
+  // Returns { successCount, errorCount, errors }.
+  const bulkAddClients = useCallback(async (rows) => {
+    const year = new Date().getFullYear();
+    const existingNums = clients
+      .map((c) => c.id?.match(/^LEAD-(\d{4})-(\d+)$/))
+      .filter(Boolean)
+      .map((m) => parseInt(m[2], 10));
+    let nextNum = (existingNums.length ? Math.max(...existingNums) : 0) + 1;
+
+    const toInsert = rows.map((row) => {
+      const id = `LEAD-${year}-${String(nextNum).padStart(4, '0')}`;
+      nextNum++;
+      return {
+        id,
+        company: row.company || '',
+        contact: row.contact || null,
+        title: row.title || null,
+        country: row.country || null,
+        city: row.city || null,
+        email: row.email || null,
+        phone: row.phone || null,
+        source: row.source || 'Other',
+        products_interest: row.products_interest
+          ? row.products_interest.split(',').map((p) => p.trim()).filter(Boolean)
+          : [],
+        est_volume: row.est_volume || null,
+        status: 'New',
+        score: 50,
+        assigned_to: row.assigned_to || null,
+        notes: row.notes || null,
+        revenue: 0,
+        orders: 0,
+      };
+    });
+
+    const { data, error } = await supabase.from('clients').insert(toInsert).select();
+
+    if (error) {
+      return { successCount: 0, errorCount: toInsert.length, errors: [error.message] };
+    }
+
+    await fetchClients();
+    return { successCount: data.length, errorCount: 0, errors: [] };
+  }, [clients, fetchClients]);
+
+  return { clients, loading, error, refetch: fetchClients, addClient, updateClient, deleteClient, bulkAddClients };
 }
 
 export function useClient(id) {

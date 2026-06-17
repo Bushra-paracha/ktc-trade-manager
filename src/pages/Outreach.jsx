@@ -246,6 +246,13 @@ export default function Outreach() {
                 Synced: {syncResult.data.created} new, {syncResult.data.updated} updated{syncResult.data.errors?.length ? `, ${syncResult.data.errors.length} errors` : ''}
               </span>
             )}
+            {syncResult?.data?.errors?.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                {syncResult.data.errors.map((err, i) => (
+                  <span key={i} style={{ color: 'var(--color-danger)', fontSize: 11.5 }}>{err}</span>
+                ))}
+              </div>
+            )}
           </FormRow>
 
           {/* Recipients */}

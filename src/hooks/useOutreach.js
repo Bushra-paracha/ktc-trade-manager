@@ -138,6 +138,7 @@ export async function sendOutreachEmails({ clients, subjectTemplate, bodyTemplat
         to_email: client.email,
         to_name: client.contact,
         subject,
+        body_html: html,
         sender_email: senderEmail,
         status: 'Pending',
       }])
@@ -175,5 +176,50 @@ export async function sendOutreachEmails({ clients, subjectTemplate, bodyTemplat
     }
   }
 
+  return results;
+}
+
+// Retries a single failed/bounced message by re-calling the send function
+// against the SAME email_messages row, reusing its stored body_html so the
+// original content (with merge tags already applied) is sent again exactly as before.
+export async function retryMessage(message) {
+  if (!message.body_html) {
+    return { success: false, error: 'No stored email content to retry (this message was sent before retry support was added).' };
+  }
+
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    // Reset status to Pending before retrying, so it's clear a retry is in-flight
+    await supabase.from('email_messages').update({ status: 'Pending', bounce_reason: null }).eq('id', message.id);
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-campaign-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ messageId: message.id, html: message.body_html }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      return { success: false, error: data.error || 'Retry failed' };
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+// Retries every currently Failed message in one go, returning a summary.
+export async function retryAllFailed(failedMessages) {
+  const results = [];
+  for (const msg of failedMessages) {
+    const result = await retryMessage(msg);
+    results.push({ id: msg.id, company: msg.clients?.company || msg.to_email, ...result });
+  }
   return results;
 }

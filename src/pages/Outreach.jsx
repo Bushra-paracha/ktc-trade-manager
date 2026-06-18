@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react';
-import { Mail, MousePointerClick, MessageSquareReply, AlertTriangle, Send, Loader2, CheckCircle2, XCircle, RefreshCw, ChevronDown, ChevronUp, Download } from 'lucide-react';
+import { Mail, MousePointerClick, MessageSquareReply, AlertTriangle, Send, Loader2, CheckCircle2, XCircle, RefreshCw, ChevronDown, ChevronUp, Download, RotateCcw, ClipboardList, Copy } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import { useClients } from '../hooks/useClients';
-import { useEmailMessages, useEmailTemplates, renderTemplate, sendOutreachEmails, syncTemplatesFromBrevo } from '../hooks/useOutreach';
+import { useEmailMessages, useEmailTemplates, renderTemplate, sendOutreachEmails, syncTemplatesFromBrevo, retryMessage, retryAllFailed } from '../hooks/useOutreach';
 
 const SENDERS = ['exports@kassamtradingcompany.com', 'sales@kassamtradingcompany.com'];
 
@@ -16,6 +16,11 @@ export default function Outreach() {
   const [syncResult, setSyncResult] = useState(null);
 
   const [expandedId, setExpandedId] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [retryingId, setRetryingId] = useState(null);
+  const [retryingAll, setRetryingAll] = useState(false);
+  const [retryAllResult, setRetryAllResult] = useState(null);
+  const [bounceTableOpen, setBounceTableOpen] = useState(false);
 
   const [composeOpen, setComposeOpen] = useState(false);
   const [selectedClientIds, setSelectedClientIds] = useState([]);
@@ -59,6 +64,43 @@ export default function Outreach() {
   }
 
   const selectedClients = clients.filter((c) => selectedClientIds.includes(c.id) && c.email);
+
+  const filteredMessages = useMemo(() => {
+    if (!statusFilter) return messages;
+    return messages.filter((m) => m.status === statusFilter);
+  }, [messages, statusFilter]);
+
+  const failedMessages = useMemo(() => messages.filter((m) => m.status === 'Failed'), [messages]);
+  const bouncedMessages = useMemo(() => messages.filter((m) => m.status === 'Bounced'), [messages]);
+
+  async function handleRetry(message) {
+    setRetryingId(message.id);
+    const result = await retryMessage(message);
+    setRetryingId(null);
+    if (!result.success) {
+      alert(`Retry failed: ${result.error}`);
+    }
+    refetch();
+  }
+
+  async function handleRetryAllFailed() {
+    setRetryingAll(true);
+    setRetryAllResult(null);
+    const results = await retryAllFailed(failedMessages);
+    setRetryingAll(false);
+    setRetryAllResult(results);
+    refetch();
+  }
+
+  function copyBounceTable() {
+    const header = 'Company\tEmail\tSubject\tBounced At\tReason';
+    const rows = bouncedMessages.map((m) =>
+      [m.clients?.company || '—', m.to_email, m.subject, m.bounced_at ? new Date(m.bounced_at).toLocaleString() : '—', m.bounce_reason || '—'].join('\t')
+    );
+    const text = [header, ...rows].join('\n');
+    navigator.clipboard.writeText(text);
+    alert('Bounce table copied to clipboard — paste it into a message to share.');
+  }
 
   const filteredRecipientClients = useMemo(() => {
     const q = recipientSearch.trim().toLowerCase();
@@ -131,16 +173,45 @@ export default function Outreach() {
           <h1>Outreach &amp; Email Campaigns</h1>
           <p>{totals.total} emails tracked · sent via Brevo</p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn btn-secondary" onClick={checkForReplies} disabled={checkingReplies}>
             {checkingReplies ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={16} />}
             Check for Replies
           </button>
+          {failedMessages.length > 0 && (
+            <button className="btn btn-secondary" onClick={handleRetryAllFailed} disabled={retryingAll}>
+              {retryingAll ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <RotateCcw size={16} />}
+              Retry All Failed ({failedMessages.length})
+            </button>
+          )}
+          {bouncedMessages.length > 0 && (
+            <button className="btn btn-secondary" onClick={() => setBounceTableOpen(true)}>
+              <ClipboardList size={16} />
+              View Bounce Reasons ({bouncedMessages.length})
+            </button>
+          )}
           <button className="btn btn-primary" onClick={() => setComposeOpen(true)}>
             <Send /> Compose Email
           </button>
         </div>
       </div>
+
+      {retryAllResult && (
+        <div className="card" style={{ marginBottom: 16, background: 'var(--color-surface-alt)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <strong style={{ fontSize: 13 }}>Retry results</strong>
+            <button className="icon-btn" onClick={() => setRetryAllResult(null)} aria-label="Dismiss"><XCircle size={15} /></button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {retryAllResult.map((r, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                {r.success ? <CheckCircle2 size={14} color="var(--color-success)" /> : <XCircle size={14} color="var(--color-danger)" />}
+                <span>{r.company}{!r.success && r.error ? ` — ${r.error}` : ' — resent successfully'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {checkError && (
         <div className="card" style={{ marginBottom: 16, background: 'var(--color-danger-soft)', border: '1px solid var(--color-danger)' }}>
@@ -163,6 +234,23 @@ export default function Outreach() {
         <StatCard icon={AlertTriangle} label="Bounce Rate" value={`${bounceRate}%`} delta={`${totals.bounced} bounced`} deltaDirection="down" accent="#B5402E" />
       </div>
 
+      <div className="toolbar" style={{ marginBottom: 12 }}>
+        <select className="select-input" style={{ maxWidth: 220 }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <option value="">All Statuses</option>
+          <option value="Pending">Pending</option>
+          <option value="Sent">Sent</option>
+          <option value="Delivered">Delivered</option>
+          <option value="Opened">Opened</option>
+          <option value="Clicked">Clicked</option>
+          <option value="Replied">Replied</option>
+          <option value="Failed">Failed</option>
+          <option value="Bounced">Bounced</option>
+        </select>
+        {statusFilter && (
+          <span className="cell-muted" style={{ fontSize: 13 }}>{filteredMessages.length} of {messages.length} emails</span>
+        )}
+      </div>
+
       {messagesLoading ? (
         <div className="card" style={{ textAlign: 'center', padding: 48 }}>
           <Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} />
@@ -181,19 +269,21 @@ export default function Outreach() {
                 <th>Opens</th>
                 <th>Clicks</th>
                 <th>Sent</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {messages.map((m) => {
+              {filteredMessages.map((m) => {
                 const replies = m.email_replies || [];
                 const hasReplies = replies.length > 0;
                 const hasBounceReason = m.status === 'Bounced' && m.bounce_reason;
                 const isExpandable = hasReplies || hasBounceReason;
                 const isExpanded = expandedId === m.id;
+                const canRetry = m.status === 'Failed' || m.status === 'Bounced';
                 return (
                   <>
-                    <tr key={m.id} style={isExpandable ? { cursor: 'pointer' } : undefined} onClick={() => isExpandable && setExpandedId(isExpanded ? null : m.id)}>
-                      <td className="cell-strong">
+                    <tr key={m.id}>
+                      <td className="cell-strong" style={isExpandable ? { cursor: 'pointer' } : undefined} onClick={() => isExpandable && setExpandedId(isExpanded ? null : m.id)}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           {isExpandable && (isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
                           {m.to_email}
@@ -209,10 +299,23 @@ export default function Outreach() {
                       <td>{m.open_count || 0}</td>
                       <td>{m.click_count || 0}</td>
                       <td className="cell-muted">{m.sent_at ? new Date(m.sent_at).toLocaleString() : '—'}</td>
+                      <td>
+                        {canRetry && (
+                          <button
+                            className="icon-btn"
+                            aria-label="Retry sending"
+                            title="Retry sending this email"
+                            onClick={() => handleRetry(m)}
+                            disabled={retryingId === m.id}
+                          >
+                            {retryingId === m.id ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <RotateCcw size={15} />}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                     {isExpanded && hasReplies && (
                       <tr key={`${m.id}-replies`}>
-                        <td colSpan={8} style={{ background: 'var(--color-surface-alt)', padding: 0 }}>
+                        <td colSpan={9} style={{ background: 'var(--color-surface-alt)', padding: 0 }}>
                           <div style={{ padding: '12px 20px' }}>
                             {replies.map((r) => (
                               <div key={r.id} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid var(--color-border)' }}>
@@ -230,7 +333,7 @@ export default function Outreach() {
                     )}
                     {isExpanded && hasBounceReason && (
                       <tr key={`${m.id}-bounce`}>
-                        <td colSpan={8} style={{ background: 'var(--color-danger-soft)', padding: '12px 20px' }}>
+                        <td colSpan={9} style={{ background: 'var(--color-danger-soft)', padding: '12px 20px' }}>
                           <strong style={{ fontSize: 12.5, color: 'var(--color-danger)' }}>Why this bounced:</strong>
                           <p style={{ fontSize: 13, margin: '4px 0 0', color: 'var(--color-ink)' }}>{m.bounce_reason}</p>
                         </td>
@@ -239,13 +342,13 @@ export default function Outreach() {
                   </>
                 );
               })}
-              {messages.length === 0 && (
+              {filteredMessages.length === 0 && (
                 <tr>
-                  <td colSpan={8}>
+                  <td colSpan={9}>
                     <div className="empty-state">
                       <Mail />
-                      <h4>No emails sent yet</h4>
-                      <p>Click "Compose Email" to send your first outreach campaign.</p>
+                      <h4>No emails {statusFilter ? `with status "${statusFilter}"` : 'sent yet'}</h4>
+                      <p>{statusFilter ? 'Try a different filter.' : 'Click "Compose Email" to send your first outreach campaign.'}</p>
                     </div>
                   </td>
                 </tr>
@@ -401,6 +504,49 @@ export default function Outreach() {
               disabled={sending || selectedClients.length === 0 || !subject || !body}
             >
               {sending ? 'Sending...' : `Send to ${selectedClients.length || ''} client${selectedClients.length === 1 ? '' : 's'}`}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={bounceTableOpen} onClose={() => setBounceTableOpen(false)} title="Bounce Reasons">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <p className="cell-muted" style={{ margin: 0, fontSize: 13 }}>
+            {bouncedMessages.length} bounced email{bouncedMessages.length === 1 ? '' : 's'}. Click "Copy Table" below, then paste it into a message to share these details for troubleshooting.
+          </p>
+
+          <div className="table-wrap" style={{ maxHeight: 400, overflowY: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>Email</th>
+                  <th>Subject</th>
+                  <th>Bounced At</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bouncedMessages.map((m) => (
+                  <tr key={m.id}>
+                    <td className="cell-strong">{m.clients?.company || '—'}</td>
+                    <td className="cell-muted">{m.to_email}</td>
+                    <td style={{ minWidth: 180 }}>{m.subject}</td>
+                    <td className="cell-muted">{m.bounced_at ? new Date(m.bounced_at).toLocaleString() : '—'}</td>
+                    <td style={{ minWidth: 220 }}>{m.bounce_reason || '—'}</td>
+                  </tr>
+                ))}
+                {bouncedMessages.length === 0 && (
+                  <tr><td colSpan={5}><div className="empty-state"><h4>No bounces</h4><p>Nothing to show here.</p></div></td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button className="btn btn-secondary" onClick={() => setBounceTableOpen(false)}>Close</button>
+            <button className="btn btn-primary" onClick={copyBounceTable}>
+              <Copy size={15} /> Copy Table
             </button>
           </div>
         </div>

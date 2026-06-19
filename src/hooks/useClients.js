@@ -121,7 +121,23 @@ export function useClients() {
     return { successCount: data.length, errorCount: 0, errors: [] };
   }, [clients, fetchClients]);
 
-  return { clients, loading, error, refetch: fetchClients, addClient, updateClient, deleteClient, bulkAddClients };
+  // Bulk-delete multiple clients by ID array
+  const bulkDeleteClients = useCallback(async (ids) => {
+    const { error } = await supabase.from('clients').delete().in('id', ids);
+    if (error) return { error: error.message };
+    setClients((prev) => prev.filter((c) => !ids.includes(c.id)));
+    return { success: true, count: ids.length };
+  }, []);
+
+  // Bulk-clear email addresses (keeps the contact record, just removes dead email)
+  const bulkClearEmails = useCallback(async (ids) => {
+    const { error } = await supabase.from('clients').update({ email: null }).in('id', ids);
+    if (error) return { error: error.message };
+    setClients((prev) => prev.map((c) => ids.includes(c.id) ? { ...c, email: null } : c));
+    return { success: true, count: ids.length };
+  }, []);
+
+  return { clients, loading, error, refetch: fetchClients, addClient, updateClient, deleteClient, bulkAddClients, bulkDeleteClients, bulkClearEmails };
 }
 
 export function useClient(id) {

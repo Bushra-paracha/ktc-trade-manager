@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, ArrowUpRight, Trash2, Loader2, AlertCircle, Upload, FileSpreadsheet } from 'lucide-react';
+import { Plus, ArrowUpRight, Trash2, Loader2, AlertCircle, Upload, FileSpreadsheet, UserX, CheckSquare, Square } from 'lucide-react';
 import Papa from 'papaparse';
 import { formatUSD } from '../data/mockData';
 import Badge from '../components/Badge';
@@ -41,7 +41,7 @@ const EMPTY_FORM = {
 };
 
 export default function Clients() {
-  const { clients, loading, error, addClient, deleteClient, bulkAddClients } = useClients();
+  const { clients, loading, error, addClient, deleteClient, bulkAddClients, bulkDeleteClients, bulkClearEmails } = useClients();
   const { isAdminOrDirector } = useAuth();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
@@ -51,6 +51,15 @@ export default function Clients() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [cleanupSelected, setCleanupSelected] = useState([]);
+  const [cleanupWorking, setCleanupWorking] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState(null);
+
+  const noEmailClients = useMemo(() =>
+    clients.filter((c) => !c.email || !c.email.trim()),
+  [clients]);
 
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importRows, setImportRows] = useState([]);
@@ -191,6 +200,11 @@ export default function Clients() {
           <p>{clients.length} leads and buyers tracked across {countries.length} countries</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          {noEmailClients.length > 0 && isAdminOrDirector && (
+            <button className="btn btn-secondary" onClick={() => { setCleanupOpen(true); setCleanupSelected(noEmailClients.map(c => c.id)); setCleanupResult(null); }}>
+              <UserX size={16} /> Clean Up ({noEmailClients.length})
+            </button>
+          )}
           <button className="btn btn-secondary" onClick={openImportModal}>
             <Upload /> Import CSV
           </button>
@@ -479,6 +493,83 @@ export default function Clients() {
               disabled={importing || importRows.length === 0}
             >
               {importing ? 'Importing...' : `Import ${importRows.length || ''} Client${importRows.length === 1 ? '' : 's'}`}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Clean Up Contacts Modal */}
+      <Modal open={cleanupOpen} onClose={() => setCleanupOpen(false)} title={`Clean Up Contacts (${noEmailClients.length} with no email)`}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <p className="cell-muted" style={{ margin: 0, fontSize: 13 }}>
+            These contacts have no email address — they can't receive outreach. Select all or individual ones, then choose to <strong>Delete</strong> them entirely or just <strong>Mark Uncontactable</strong> (keeps the record, flags it so it won't appear in Compose Email).
+          </p>
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setCleanupSelected(noEmailClients.map(c => c.id))}>
+              <CheckSquare size={14} /> Select All
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setCleanupSelected([])}>
+              <Square size={14} /> Deselect All
+            </button>
+            <span className="cell-muted" style={{ fontSize: 12 }}>{cleanupSelected.length} selected</span>
+          </div>
+
+          <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', maxHeight: 300, overflowY: 'auto' }}>
+            {noEmailClients.map((c) => (
+              <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 13, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={cleanupSelected.includes(c.id)}
+                  onChange={() => setCleanupSelected(prev =>
+                    prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id]
+                  )}
+                />
+                <div style={{ flex: 1 }}>
+                  <div className="cell-strong">{c.company}</div>
+                  <div className="cell-muted">{c.country || '—'} · {c.phone || 'No phone either'}</div>
+                </div>
+                <Badge status={c.status} />
+              </label>
+            ))}
+          </div>
+
+          {cleanupResult && (
+            <div style={{ padding: '10px 14px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-alt)', fontSize: 13 }}>
+              {cleanupResult}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button className="btn btn-secondary" onClick={() => setCleanupOpen(false)}>Close</button>
+            <button
+              className="btn btn-secondary"
+              disabled={cleanupSelected.length === 0 || cleanupWorking}
+              onClick={async () => {
+                setCleanupWorking(true);
+                const result = await bulkClearEmails(cleanupSelected);
+                setCleanupWorking(false);
+                setCleanupResult(result.error ? `Error: ${result.error}` : `Marked ${result.count} contacts as uncontactable (email cleared).`);
+                setCleanupSelected([]);
+              }}
+            >
+              {cleanupWorking ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <AlertCircle size={14} />}
+              Mark Uncontactable
+            </button>
+            <button
+              className="btn btn-danger"
+              disabled={cleanupSelected.length === 0 || cleanupWorking}
+              onClick={async () => {
+                if (!window.confirm(`Permanently delete ${cleanupSelected.length} contact(s)? This cannot be undone.`)) return;
+                setCleanupWorking(true);
+                const result = await bulkDeleteClients(cleanupSelected);
+                setCleanupWorking(false);
+                setCleanupResult(result.error ? `Error: ${result.error}` : `Deleted ${result.count} contacts permanently.`);
+                setCleanupSelected([]);
+              }}
+            >
+              {cleanupWorking ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={14} />}
+              Delete Selected
             </button>
           </div>
         </div>

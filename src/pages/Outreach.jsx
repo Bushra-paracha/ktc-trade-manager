@@ -10,7 +10,7 @@ const SENDERS = ['exports@kassamtradingcompany.com', 'sales@kassamtradingcompany
 
 export default function Outreach() {
   const { clients, loading: clientsLoading } = useClients();
-  const { messages, loading: messagesLoading, error: messagesError, refetch, checkForReplies, checkingReplies, checkError } = useEmailMessages();
+  const { messages, loading: messagesLoading, error: messagesError, refetch, checkForReplies, checkingReplies, checkError, checkResult } = useEmailMessages();
   const { templates, loading: templatesLoading, refetch: refetchTemplates } = useEmailTemplates();
   const [syncingTemplates, setSyncingTemplates] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
@@ -217,6 +217,26 @@ export default function Outreach() {
         <div className="card" style={{ marginBottom: 16, background: 'var(--color-danger-soft)', border: '1px solid var(--color-danger)' }}>
           <strong style={{ color: 'var(--color-danger)' }}>Couldn't check for replies</strong>
           <p style={{ margin: '4px 0 0', fontSize: 13 }}>{checkError}</p>
+        </div>
+      )}
+
+      {checkResult && !checkError && (
+        <div className="card" style={{ marginBottom: 16, background: 'var(--color-surface-alt)', border: '1px solid var(--color-border)' }}>
+          <strong style={{ fontSize: 13 }}>Reply check complete</strong>
+          {checkResult.results?.map((r, i) => (
+            <div key={i} style={{ fontSize: 12.5, marginTop: 6, color: r.errors?.length ? 'var(--color-danger)' : 'var(--color-ink-soft)' }}>
+              <span style={{ fontWeight: 600 }}>{r.mailbox}</span>
+              {r.errors?.length > 0
+                ? ` — ❌ Error: ${r.errors.join(', ')}`
+                : ` — checked ${r.checked ?? 0} messages, ${r.newReplies ?? 0} new replies found`
+              }
+            </div>
+          ))}
+          {!checkResult.results && (
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--color-ink-soft)' }}>
+              {JSON.stringify(checkResult)}
+            </p>
+          )}
         </div>
       )}
 

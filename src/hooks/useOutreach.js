@@ -54,11 +54,14 @@ export function useEmailMessages() {
     fetchMessages();
   }, [fetchMessages]);
 
+  const [checkResult, setCheckResult] = useState(null);
+
   // Calls the check-email-replies Edge Function, which connects to the
   // KTC mailboxes via IMAP and matches new replies to sent messages.
   const checkForReplies = useCallback(async () => {
     setCheckingReplies(true);
     setCheckError(null);
+    setCheckResult(null);
 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -77,6 +80,7 @@ export function useEmailMessages() {
       if (!res.ok) {
         setCheckError(data.error || 'Failed to check replies');
       } else {
+        setCheckResult(data);
         await fetchMessages();
       }
       setCheckingReplies(false);
@@ -88,7 +92,7 @@ export function useEmailMessages() {
     }
   }, [fetchMessages]);
 
-  return { messages, loading, error, refetch: fetchMessages, checkForReplies, checkingReplies, checkError };
+  return { messages, loading, error, refetch: fetchMessages, checkForReplies, checkingReplies, checkError, checkResult };
 }
 
 // Calls the sync-brevo-templates Edge Function to pull in any templates

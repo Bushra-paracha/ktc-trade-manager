@@ -228,7 +228,7 @@ export default function Outreach() {
               <span style={{ fontWeight: 600 }}>{r.mailbox}</span>
               {r.errors?.length > 0
                 ? ` — ❌ Error: ${r.errors.join(', ')}`
-                : ` — checked ${r.checked ?? 0} messages, ${r.newReplies ?? 0} new replies found`
+                : ` — checked ${r.checked ?? 0} messages · ${r.newReplies ?? 0} campaign replies · ${r.newInbound ?? 0} new inbound emails`
               }
             </div>
           ))}

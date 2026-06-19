@@ -17,7 +17,8 @@ import {
 export const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/clients', label: 'Clients', icon: Users },
-  { to: '/inbox', label: 'Inbox', icon: Inbox },
+  { to: '/inbox', label: 'Quote Inbox', icon: Inbox },
+  { to: '/inbound', label: 'Email Inbox', icon: Mail },
   { to: '/outreach', label: 'Outreach', icon: Mail },
   { to: '/inquiries', label: 'Inquiries', icon: FileQuestion },
   { to: '/orders', label: 'Orders', icon: ClipboardList },

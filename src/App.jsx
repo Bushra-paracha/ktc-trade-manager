@@ -13,6 +13,7 @@ import ClientProfile from './pages/ClientProfile';
 import Outreach from './pages/Outreach';
 import Inquiries from './pages/Inquiries';
 import PublicSubmissions from './pages/PublicSubmissions';
+import InboundInbox from './pages/InboundInbox';
 import Orders from './pages/Orders';
 import OrderDetail from './pages/OrderDetail';
 import Shipments from './pages/Shipments';
@@ -54,6 +55,7 @@ export default function App() {
                     <Route path="/outreach" element={<Outreach />} />
                     <Route path="/inquiries" element={<Inquiries />} />
                     <Route path="/inbox" element={<PublicSubmissions />} />
+                    <Route path="/inbound" element={<InboundInbox />} />
                     <Route path="/orders" element={<Orders />} />
                     <Route path="/orders/:id" element={<OrderDetail />} />
                     <Route path="/shipments" element={<Shipments />} />

@@ -70,7 +70,7 @@ export default function Outreach() {
     return messages.filter((m) => m.status === statusFilter);
   }, [messages, statusFilter]);
 
-  const failedMessages = useMemo(() => messages.filter((m) => m.status === 'Failed'), [messages]);
+  const failedMessages = useMemo(() => messages.filter((m) => m.status === 'Failed' || m.status === 'Bounced'), [messages]);
   const bouncedMessages = useMemo(() => messages.filter((m) => m.status === 'Bounced'), [messages]);
 
   async function handleRetry(message) {
@@ -181,7 +181,7 @@ export default function Outreach() {
           {failedMessages.length > 0 && (
             <button className="btn btn-secondary" onClick={handleRetryAllFailed} disabled={retryingAll}>
               {retryingAll ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <RotateCcw size={16} />}
-              Retry All Failed ({failedMessages.length})
+              Retry Failed & Bounced ({failedMessages.length})
             </button>
           )}
           {bouncedMessages.length > 0 && (

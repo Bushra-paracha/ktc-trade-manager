@@ -55,7 +55,22 @@ export default function ClientProfile() {
       <div className="grid grid-4" style={{ marginBottom: 20 }}>
         <div className="stat-card">
           <div className="stat-card-label">Lead Score</div>
-          <div className="stat-card-value">{client.score}/100</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+            <div className="stat-card-value" style={{ margin: 0 }}>{client.score}/100</div>
+            <span style={{
+              fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+              background: client.score >= 80 ? '#FDE8E6' : client.score >= 60 ? '#FDF6E3' : client.score >= 40 ? '#E6F0F7' : '#F0F0F0',
+              color: client.score >= 80 ? '#B5402E' : client.score >= 60 ? '#C49A2B' : client.score >= 40 ? '#2C6E8F' : '#888888',
+            }}>
+              {client.score >= 80 ? '🔥 HOT' : client.score >= 60 ? '🌤 WARM' : client.score >= 40 ? '🌊 LUKEWARM' : '❄️ COLD'}
+            </span>
+          </div>
+          <div className="progress-track" style={{ width: '100%', marginTop: 8 }}>
+            <div className="progress-fill" style={{
+              width: `${client.score}%`,
+              background: client.score >= 80 ? '#B5402E' : client.score >= 60 ? '#C49A2B' : client.score >= 40 ? 'var(--color-accent)' : 'var(--color-ink-faint)'
+            }} />
+          </div>
         </div>
         <div className="stat-card">
           <div className="stat-card-label">Total Revenue</div>

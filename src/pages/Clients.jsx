@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, ArrowUpRight, Trash2, Loader2, AlertCircle, Upload, FileSpreadsheet, UserX, CheckSquare, Square } from 'lucide-react';
+import { Plus, ArrowUpRight, Trash2, Loader2, AlertCircle, Upload, FileSpreadsheet, UserX, CheckSquare, Square, RefreshCw, TrendingUp, ArrowUpDown } from 'lucide-react';
 import Papa from 'papaparse';
 import { formatUSD } from '../data/mockData';
 import Badge from '../components/Badge';
@@ -8,6 +8,7 @@ import Modal from '../components/Modal';
 import { SearchInput, SelectInput } from '../components/Toolbar';
 import { useClients } from '../hooks/useClients';
 import { useAuth } from '../hooks/useAuth';
+import { supabase } from '../lib/supabaseClient';
 
 const STATUSES = ['New', 'Contacted', 'Engaged', 'Negotiating', 'Won', 'Lost', 'Dormant'];
 const SOURCES = [
@@ -47,6 +48,10 @@ export default function Clients() {
   const [status, setStatus] = useState('');
   const [country, setCountry] = useState('');
   const [segment, setSegment] = useState('');
+  const [scoreTier, setScoreTier] = useState('');
+  const [sortByScore, setSortByScore] = useState(false);
+  const [rescoring, setRescoring] = useState(false);
+  const [rescoreResult, setRescoreResult] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -83,15 +88,53 @@ export default function Clients() {
 
   const segments = [...new Set(clients.map(getSegment))];
 
-  const filtered = clients.filter((c) => {
-    const matchesSearch =
-      (c.company || '').toLowerCase().includes(search.toLowerCase()) ||
-      (c.contact || '').toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = !status || c.status === status;
-    const matchesCountry = !country || c.country === country;
-    const matchesSegment = !segment || getSegment(c) === segment;
-    return matchesSearch && matchesStatus && matchesCountry && matchesSegment;
-  });
+  function getScoreTier(score) {
+    if (score >= 80) return 'Hot';
+    if (score >= 60) return 'Warm';
+    if (score >= 40) return 'Lukewarm';
+    return 'Cold';
+  }
+
+  function scoreTierColor(tier) {
+    if (tier === 'Hot') return '#B5402E';
+    if (tier === 'Warm') return '#C49A2B';
+    if (tier === 'Lukewarm') return '#2C6E8F';
+    return '#888888';
+  }
+
+  async function handleRescore() {
+    setRescoring(true);
+    setRescoreResult(null);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      // Run scoring via Supabase RPC — we call a direct SQL update via the REST API
+      const { error } = await supabase.rpc('rescore_clients');
+      if (error) throw new Error(error.message);
+      setRescoreResult('Scores updated successfully.');
+      refetch();
+    } catch (err) {
+      // Fallback: rescore is purely SQL-side, so just notify the user to run the SQL manually
+      setRescoreResult('Auto-rescore not available — please re-run SQL 22 in Supabase to update scores.');
+    }
+    setRescoring(false);
+  }
+
+  const filtered = useMemo(() => {
+    let list = clients.filter((c) => {
+      const matchesSearch =
+        (c.company || '').toLowerCase().includes(search.toLowerCase()) ||
+        (c.contact || '').toLowerCase().includes(search.toLowerCase());
+      const matchesStatus = !status || c.status === status;
+      const matchesCountry = !country || c.country === country;
+      const matchesSegment = !segment || getSegment(c) === segment;
+      const matchesTier = !scoreTier || getScoreTier(c.score || 0) === scoreTier;
+      return matchesSearch && matchesStatus && matchesCountry && matchesSegment && matchesTier;
+    });
+    if (sortByScore) {
+      list = [...list].sort((a, b) => (b.score || 0) - (a.score || 0));
+    }
+    return list;
+  }, [clients, search, status, country, segment, scoreTier, sortByScore]);
 
   function updateForm(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -245,7 +288,33 @@ export default function Clients() {
         <SelectInput value={segment} onChange={setSegment} options={segments} label="All Segments" />
         <SelectInput value={status} onChange={setStatus} options={STATUSES} label="All Statuses" />
         <SelectInput value={country} onChange={setCountry} options={countries} label="All Countries" />
+        <select className="select-input" value={scoreTier} onChange={(e) => setScoreTier(e.target.value)}>
+          <option value="">All Tiers</option>
+          <option value="Hot">🔥 Hot (80-100)</option>
+          <option value="Warm">🌤 Warm (60-79)</option>
+          <option value="Lukewarm">🌊 Lukewarm (40-59)</option>
+          <option value="Cold">❄️ Cold (0-39)</option>
+        </select>
+        <button
+          className={`btn btn-secondary btn-sm`}
+          onClick={() => setSortByScore(p => !p)}
+          style={{ background: sortByScore ? 'var(--color-accent-soft)' : undefined }}
+          title="Sort by lead score"
+        >
+          <ArrowUpDown size={14} /> {sortByScore ? 'Score ↓' : 'Sort by Score'}
+        </button>
+        {isAdminOrDirector && (
+          <button className="btn btn-secondary btn-sm" onClick={handleRescore} disabled={rescoring} title="Recalculate all lead scores">
+            {rescoring ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={14} />}
+            Rescore
+          </button>
+        )}
       </div>
+      {rescoreResult && (
+        <div style={{ fontSize: 12.5, color: 'var(--color-ink-soft)', marginBottom: 8, marginTop: -4 }}>
+          {rescoreResult}
+        </div>
+      )}
 
       {loading ? (
         <div className="card" style={{ textAlign: 'center', padding: 48 }}>
@@ -304,11 +373,16 @@ export default function Clients() {
                     )}
                   </td>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div className="progress-track" style={{ width: 50 }}>
-                        <div className="progress-fill" style={{ width: `${c.score}%`, background: c.score > 70 ? 'var(--color-success)' : c.score > 50 ? 'var(--color-accent)' : 'var(--color-ink-faint)' }} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div className="progress-track" style={{ width: 50 }}>
+                          <div className="progress-fill" style={{ width: `${c.score}%`, background: c.score >= 80 ? '#B5402E' : c.score >= 60 ? '#C49A2B' : c.score >= 40 ? 'var(--color-accent)' : 'var(--color-ink-faint)' }} />
+                        </div>
+                        <span className="cell-muted">{c.score}</span>
                       </div>
-                      <span className="cell-muted">{c.score}</span>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: scoreTierColor(getScoreTier(c.score || 0)) }}>
+                        {getScoreTier(c.score || 0).toUpperCase()}
+                      </span>
                     </div>
                   </td>
                   <td className="cell-strong">{c.revenue ? formatUSD(c.revenue) : '—'}</td>

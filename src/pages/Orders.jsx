@@ -1,14 +1,21 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Loader2, AlertCircle, Trash2 } from 'lucide-react';
+import { Loader2, AlertCircle, Trash2, Plus } from 'lucide-react';
 import { formatUSD } from '../data/mockData';
 import { useOrders } from '../hooks/useOrders';
 import { useAuth } from '../hooks/useAuth';
+import { useClients } from '../hooks/useClients';
+import Modal from '../components/Modal';
 
 const COLUMNS = ['Confirmed', 'In Production', 'Ready to Ship', 'Shipped', 'Delivered'];
 
 export default function Orders() {
-  const { orders, loading, error, deleteOrder } = useOrders();
+  const { orders, loading, error, deleteOrder, createOrder } = useOrders();
+  const { clients } = useClients();
   const { isAdminOrDirector } = useAuth();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState({ client_id: '', status: 'Confirmed', incoterm: 'FOB', payment_method: 'LC', notes: '' });
+  const [saving, setSaving] = useState(false);
 
   async function handleDelete(id, company) {
     const confirmed = window.confirm(
@@ -19,13 +26,25 @@ export default function Orders() {
     if (error) alert(`Couldn't delete order: ${error}`);
   }
 
+  async function handleCreate() {
+    if (!form.client_id) return alert('Please select a client');
+    setSaving(true);
+    const { error } = await createOrder(form);
+    setSaving(false);
+    if (error) alert(`Couldn't create order: ${error}`);
+    else { setModalOpen(false); setForm({ client_id: '', status: 'Confirmed', incoterm: 'FOB', payment_method: 'LC', notes: '' }); }
+  }
+
   return (
     <div>
       <div className="page-header">
         <div>
           <h1>Orders</h1>
-          <p>{orders.length} orders · convert inquiries to orders from the Inquiries page</p>
+          <p>{orders.length} orders · convert inquiries or create directly</p>
         </div>
+        <button className="btn btn-primary" onClick={() => setModalOpen(true)}>
+          <Plus size={16} /> New Order
+        </button>
       </div>
 
       {error && (
@@ -123,6 +142,46 @@ export default function Orders() {
           </div>
         </>
       )}
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New Order">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Client *
+            <select className="select-input" value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}>
+              <option value="">— Select a client —</option>
+              {clients.filter(c => c.email).map(c => <option key={c.id} value={c.id}>{c.company || c.email}</option>)}
+            </select>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Status
+            <select className="select-input" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+              {COLUMNS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Incoterm
+            <select className="select-input" value={form.incoterm} onChange={e => setForm(f => ({ ...f, incoterm: e.target.value }))}>
+              {['FOB', 'CIF', 'CFR', 'EXW', 'DDP'].map(i => <option key={i} value={i}>{i}</option>)}
+            </select>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Payment Method
+            <select className="select-input" value={form.payment_method} onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}>
+              {['LC', 'TT', 'DA', 'DP'].map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Notes
+            <textarea className="select-input" rows={3} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." />
+          </label>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button className="btn btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleCreate} disabled={saving || !form.client_id}>
+              {saving ? 'Creating...' : 'Create Order'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -122,7 +122,19 @@ export function useOrders() {
     return { success: true };
   }, []);
 
-  return { orders, loading, error, refetch: fetchOrders, convertInquiryToOrder, updateOrderStatus, updateOrderProgress, deleteOrder };
+  const createOrder = useCallback(async ({ client_id, status = 'Confirmed', incoterm = 'FOB', payment_method = 'LC', notes = '' }) => {
+    const id = generateNextOrderId(orders);
+    const { data, error } = await supabase
+      .from('orders')
+      .insert([{ id, client_id, status, incoterm, payment_method, notes, total_value: 0, production_progress: 0 }])
+      .select()
+      .single();
+    if (error) return { error: error.message };
+    await fetchOrders();
+    return { data };
+  }, [orders, fetchOrders]);
+
+  return { orders, loading, error, refetch: fetchOrders, convertInquiryToOrder, createOrder, updateOrderStatus, updateOrderProgress, deleteOrder };
 }
 
 // ---------- Single order with full detail ----------

@@ -42,7 +42,7 @@ const EMPTY_FORM = {
 };
 
 export default function Clients() {
-  const { clients, loading, error, addClient, deleteClient, bulkAddClients, bulkDeleteClients, bulkClearEmails } = useClients();
+  const { clients, loading, error, refetch, addClient, deleteClient, bulkAddClients, bulkDeleteClients, bulkClearEmails } = useClients();
   const { isAdminOrDirector } = useAuth();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');

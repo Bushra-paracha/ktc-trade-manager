@@ -106,15 +106,12 @@ export default function Clients() {
     setRescoring(true);
     setRescoreResult(null);
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      // Run scoring via Supabase RPC — we call a direct SQL update via the REST API
-      const { error } = await supabase.rpc('rescore_clients');
+      const { data, error } = await supabase.rpc('rescore_clients');
       if (error) throw new Error(error.message);
-      setRescoreResult('Scores updated successfully.');
+      setRescoreResult(`✅ ${data?.updated || 'All'} contacts rescored successfully.`);
       refetch();
     } catch (err) {
-      // Fallback: rescore is purely SQL-side, so just notify the user to run the SQL manually
-      setRescoreResult('Auto-rescore not available — please re-run SQL 22 in Supabase to update scores.');
+      setRescoreResult(`❌ Rescore failed: ${err.message}`);
     }
     setRescoring(false);
   }

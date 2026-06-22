@@ -14,7 +14,7 @@ export default function Orders() {
   const { clients } = useClients();
   const { isAdminOrDirector } = useAuth();
   const [modalOpen, setModalOpen] = useState(false);
-  const [form, setForm] = useState({ client_id: '', status: 'Confirmed', incoterm: 'FOB', payment_method: 'LC', notes: '' });
+  const [form, setForm] = useState({ client_id: '', status: 'Confirmed', incoterm: 'FOB', payment_method: 'LC' });
   const [saving, setSaving] = useState(false);
 
   async function handleDelete(id, company) {
@@ -32,7 +32,7 @@ export default function Orders() {
     const { error } = await createOrder(form);
     setSaving(false);
     if (error) alert(`Couldn't create order: ${error}`);
-    else { setModalOpen(false); setForm({ client_id: '', status: 'Confirmed', incoterm: 'FOB', payment_method: 'LC', notes: '' }); }
+    else { setModalOpen(false); setForm({ client_id: '', status: 'Confirmed', incoterm: 'FOB', payment_method: 'LC' }); }
   }
 
   return (
@@ -169,10 +169,6 @@ export default function Orders() {
             <select className="select-input" value={form.payment_method} onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}>
               {['LC', 'TT', 'DA', 'DP'].map(p => <option key={p} value={p}>{p}</option>)}
             </select>
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Notes
-            <textarea className="select-input" rows={3} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." />
           </label>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button className="btn btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button>

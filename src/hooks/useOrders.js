@@ -122,11 +122,11 @@ export function useOrders() {
     return { success: true };
   }, []);
 
-  const createOrder = useCallback(async ({ client_id, status = 'Confirmed', incoterm = 'FOB', payment_method = 'LC', notes = '' }) => {
+  const createOrder = useCallback(async ({ client_id, status = 'Confirmed', incoterm = 'FOB', payment_method = 'LC' }) => {
     const id = generateNextOrderId(orders);
     const { data, error } = await supabase
       .from('orders')
-      .insert([{ id, client_id, status, incoterm, payment_method, notes, total_value: 0, production_progress: 0 }])
+      .insert([{ id, client_id, status, incoterm, payment_method, total_value: 0, production_progress: 0 }])
       .select()
       .single();
     if (error) return { error: error.message };

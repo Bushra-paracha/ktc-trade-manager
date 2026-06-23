@@ -12,6 +12,7 @@ import {
   Settings,
   Inbox,
   CheckSquare,
+  Truck,
 } from 'lucide-react';
 
 // Primary nav items shown in sidebar (desktop) and bottom nav (mobile, first 4)
@@ -19,6 +20,7 @@ export const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/clients', label: 'Clients', icon: Users },
   { to: '/tasks', label: 'Tasks', icon: CheckSquare },
+  { to: '/suppliers', label: 'Suppliers', icon: Truck },
   { to: '/inbox', label: 'Quote Inbox', icon: Inbox },
   { to: '/inbound', label: 'Email Inbox', icon: Mail },
   { to: '/outreach', label: 'Outreach', icon: Mail },

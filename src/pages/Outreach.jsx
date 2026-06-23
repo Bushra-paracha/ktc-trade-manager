@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Mail, MousePointerClick, MessageSquareReply, AlertTriangle, Send, Loader2, CheckCircle2, XCircle, RefreshCw, ChevronDown, ChevronUp, Download, RotateCcw, ClipboardList, Copy } from 'lucide-react';
+import { Mail, MousePointerClick, MessageSquareReply, AlertTriangle, Send, Loader2, CheckCircle2, XCircle, RefreshCw, ChevronDown, ChevronUp, Download, RotateCcw, ClipboardList, Copy, Trash2 } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
 import StatCard from '../components/StatCard';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
@@ -394,6 +395,22 @@ export default function Outreach() {
                 <option value="">— Blank email —</option>
                 {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
+              {templateId && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  title="Delete this template"
+                  onClick={async () => {
+                    if (!window.confirm('Delete this template? This cannot be undone.')) return;
+                    const { error } = await supabase.from('email_templates').delete().eq('id', templateId);
+                    if (error) alert(`Couldn't delete: ${error.message}`);
+                    else { setTemplateId(''); refetchTemplates(); }
+                  }}
+                  style={{ color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
               <button type="button" className="btn btn-secondary btn-sm" onClick={handleSyncTemplates} disabled={syncingTemplates} title="Pull in any templates created in Brevo's own editor">
                 {syncingTemplates ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Download size={14} />}
                 Sync from Brevo

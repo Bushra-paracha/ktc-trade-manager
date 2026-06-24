@@ -1,10 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, AlertCircle, UserPlus, Trash2, Inbox } from 'lucide-react';
+import { Loader2, AlertCircle, UserPlus, Trash2, Inbox, Reply, Send } from 'lucide-react';
 import Badge from '../components/Badge';
+import Modal from '../components/Modal';
 import { supabase } from '../lib/supabaseClient';
 import { useClients } from '../hooks/useClients';
 import { useAuth } from '../hooks/useAuth';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const MAILBOXES = ['exports@kassamtradingcompany.com', 'sales@kassamtradingcompany.com', 'info@kassamtradingcompany.com'];
+const DEFAULT_SIGNATURE = `\n\nWarm regards,\n\nSultan Ali Paracha\nDirector, Kassam Trading Company\nKarachi, Pakistan\nTel: +92-21-2411786 | WhatsApp: +92-300-820-1074\nEmail: ktcmktg@gmail.com\nwww.kassamtradingcompany.com\nREAP Member #2-1-99-1195`;
 
 const STATUSES = ['New', 'Reviewed', 'Converted to Client', 'Spam', 'Ignored'];
 
@@ -16,6 +21,11 @@ export default function PublicSubmissions() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [converting, setConverting] = useState(null);
+  const [replyModal, setReplyModal] = useState(false);
+  const [replyTo, setReplyTo] = useState(null);
+  const [replyForm, setReplyForm] = useState({ from: 'exports@kassamtradingcompany.com', subject: '', body: '' });
+  const [sending, setSending] = useState(false);
+  const [sendResult, setSendResult] = useState(null);
 
   async function fetchSubmissions() {
     setLoading(true);
@@ -76,6 +86,64 @@ export default function PublicSubmissions() {
     if (!window.confirm('Delete this submission permanently?')) return;
     await supabase.from('public_inquiry_submissions').delete().eq('id', id);
     fetchSubmissions();
+  }
+
+  function openReply(submission) {
+    setReplyTo(submission);
+    setReplyForm({
+      from: 'exports@kassamtradingcompany.com',
+      subject: `Re: Your Inquiry — Kassam Trading Company`,
+      body: `Dear ${submission.full_name || submission.company_name},\n\nThank you for reaching out to Kassam Trading Company through our website. We have received your inquiry and are pleased to respond.\n${DEFAULT_SIGNATURE}`,
+    });
+    setSendResult(null);
+    setReplyModal(true);
+  }
+
+  async function handleSendReply() {
+    if (!replyForm.body.trim() || !replyTo?.email) return;
+    setSending(true);
+    setSendResult(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const html = `<pre style="font-family:Arial,sans-serif;font-size:14px;white-space:pre-wrap;">${replyForm.body.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>`;
+
+      const { data: msgRow, error: insertErr } = await supabase
+        .from('email_messages')
+        .insert([{
+          to_email: replyTo.email,
+          to_name: replyTo.full_name || replyTo.company_name,
+          subject: replyForm.subject,
+          sender_email: replyForm.from,
+          status: 'Pending',
+          body_html: html,
+        }])
+        .select()
+        .single();
+
+      if (insertErr) throw new Error(insertErr.message);
+
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-campaign-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ messageId: msgRow.id, html }),
+      });
+      const result = await res.json();
+      if (result.error) throw new Error(result.error);
+
+      await supabase.from('public_inquiry_submissions')
+        .update({ status: 'Reviewed' })
+        .eq('id', replyTo.id);
+
+      setSendResult({ success: true, message: `Reply sent to ${replyTo.email}` });
+      fetchSubmissions();
+      setTimeout(() => { setReplyModal(false); setSendResult(null); }, 2500);
+    } catch (err) {
+      setSendResult({ success: false, message: `Failed: ${err.message}` });
+    }
+    setSending(false);
   }
 
   const newCount = submissions.filter((s) => s.status === 'New').length;
@@ -153,6 +221,15 @@ export default function PublicSubmissions() {
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: 4 }}>
+                      {s.email && (
+                        <button
+                          className="icon-btn"
+                          title="Reply to this inquiry"
+                          onClick={() => openReply(s)}
+                        >
+                          <Reply size={16} />
+                        </button>
+                      )}
                       {s.status !== 'Converted to Client' && (
                         <button
                           className="icon-btn"
@@ -188,6 +265,71 @@ export default function PublicSubmissions() {
           </table>
         </div>
       )}
+
+      {/* Reply Modal */}
+      <Modal open={replyModal} onClose={() => setReplyModal(false)} title={`Reply to ${replyTo?.full_name || replyTo?.email}`}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {sendResult && (
+            <div style={{
+              padding: '10px 14px', borderRadius: 8, fontSize: 13,
+              background: sendResult.success ? '#E6F7ED' : '#F7E6E6',
+              color: sendResult.success ? '#1A6E3A' : '#6E1A1A',
+              border: `1px solid ${sendResult.success ? '#1A6E3A' : '#6E1A1A'}`,
+            }}>
+              {sendResult.message}
+            </div>
+          )}
+
+          {/* Show their original inquiry for reference */}
+          {replyTo?.message && (
+            <div style={{ background: 'var(--color-surface-alt)', padding: '10px 14px', borderRadius: 8, fontSize: 12, color: 'var(--color-ink-soft)', borderLeft: '3px solid var(--color-accent)' }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>Their message:</div>
+              {replyTo.message}
+            </div>
+          )}
+
+          <div style={{ fontSize: 12.5, color: 'var(--color-ink-soft)' }}>
+            <span style={{ fontWeight: 600 }}>To: </span>
+            {replyTo?.full_name} &lt;{replyTo?.email}&gt;
+          </div>
+
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            From
+            <select className="select-input" value={replyForm.from} onChange={e => setReplyForm(f => ({ ...f, from: e.target.value }))}>
+              {MAILBOXES.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </label>
+
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Subject
+            <input className="select-input" value={replyForm.subject} onChange={e => setReplyForm(f => ({ ...f, subject: e.target.value }))} />
+          </label>
+
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Message
+            <textarea
+              className="select-input"
+              rows={14}
+              value={replyForm.body}
+              onChange={e => setReplyForm(f => ({ ...f, body: e.target.value }))}
+              placeholder="Type your response here..."
+              style={{ fontFamily: 'inherit', fontSize: 13 }}
+            />
+          </label>
+
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button className="btn btn-secondary" onClick={() => setReplyModal(false)}>Cancel</button>
+            <button
+              className="btn btn-primary"
+              onClick={handleSendReply}
+              disabled={sending || !replyForm.body.trim()}
+            >
+              {sending ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}
+              {sending ? 'Sending...' : 'Send Reply'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

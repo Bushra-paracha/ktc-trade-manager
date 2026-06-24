@@ -35,6 +35,10 @@ export default function Settings() {
   const [editingUser, setEditingUser] = useState(null);
   const [editForm, setEditForm] = useState({ full_name: '', role: '' });
   const [saving, setSaving] = useState(false);
+  const [inviteModal, setInviteModal] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ email: '', full_name: '', role: 'Sales Executive' });
+  const [inviting, setInviting] = useState(false);
+  const [inviteResult, setInviteResult] = useState(null);
 
   async function fetchUsers() {
     setLoading(true);
@@ -70,6 +74,42 @@ export default function Settings() {
     fetchUsers();
   }
 
+  async function handleInvite() {
+    if (!inviteForm.email.trim()) return;
+    setInviting(true);
+    setInviteResult(null);
+    try {
+      // Send Supabase magic link invite
+      const { data, error } = await supabase.auth.admin.inviteUserByEmail(inviteForm.email, {
+        data: {
+          full_name: inviteForm.full_name,
+          role: inviteForm.role,
+        }
+      });
+
+      if (error) {
+        // If admin API not available from client, fall back to creating profile entry
+        // and letting them sign up via magic link
+        const { error: signInError } = await supabase.auth.signInWithOtp({
+          email: inviteForm.email,
+          options: {
+            emailRedirectTo: 'https://app.kassamtradingcompany.com',
+            data: { full_name: inviteForm.full_name, role: inviteForm.role }
+          }
+        });
+        if (signInError) throw new Error(signInError.message);
+        setInviteResult({ success: true, message: `Magic link sent to ${inviteForm.email}. They can use it to log in and set their password.` });
+      } else {
+        setInviteResult({ success: true, message: `Invitation sent to ${inviteForm.email}. They will receive an email to set up their account.` });
+      }
+      setInviteForm({ email: '', full_name: '', role: 'Sales Executive' });
+      setTimeout(() => { setInviteModal(false); setInviteResult(null); fetchUsers(); }, 3000);
+    } catch (err) {
+      setInviteResult({ success: false, message: `Failed to send invite: ${err.message}` });
+    }
+    setInviting(false);
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -77,6 +117,11 @@ export default function Settings() {
           <h1>Settings</h1>
           <p>Manage users, roles, and reference info for connected accounts</p>
         </div>
+        {tab === 'users' && (
+          <button className="btn btn-primary" onClick={() => { setInviteModal(true); setInviteResult(null); }}>
+            <Shield size={15} /> Invite Team Member
+          </button>
+        )}
       </div>
 
       <div className="tabs">
@@ -236,6 +281,61 @@ export default function Settings() {
             <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
           </div>
         </form>
+      </Modal>
+
+      {/* Invite Team Member Modal */}
+      <Modal open={inviteModal} onClose={() => { setInviteModal(false); setInviteResult(null); }} title="Invite Team Member">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {inviteResult && (
+            <div style={{
+              padding: '10px 14px', borderRadius: 8, fontSize: 13,
+              background: inviteResult.success ? '#E6F7ED' : '#F7E6E6',
+              color: inviteResult.success ? '#1A6E3A' : '#6E1A1A',
+              border: `1px solid ${inviteResult.success ? '#1A6E3A' : '#6E1A1A'}`,
+            }}>
+              {inviteResult.message}
+            </div>
+          )}
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Email Address *
+            <input
+              className="select-input"
+              type="email"
+              value={inviteForm.email}
+              onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))}
+              placeholder="e.g. sultan@kassamtradingcompany.com"
+              autoFocus
+            />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Full Name
+            <input
+              className="select-input"
+              value={inviteForm.full_name}
+              onChange={e => setInviteForm(f => ({ ...f, full_name: e.target.value }))}
+              placeholder="e.g. Sultan Ali Paracha"
+            />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Role
+            <select className="select-input" value={inviteForm.role} onChange={e => setInviteForm(f => ({ ...f, role: e.target.value }))}>
+              {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </label>
+          <p style={{ fontSize: 12, color: 'var(--color-ink-faint)', margin: 0 }}>
+            They will receive an email with a link to log in and set their password.
+          </p>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button className="btn btn-secondary" onClick={() => { setInviteModal(false); setInviteResult(null); }}>Cancel</button>
+            <button
+              className="btn btn-primary"
+              onClick={handleInvite}
+              disabled={inviting || !inviteForm.email.trim()}
+            >
+              {inviting ? 'Sending...' : 'Send Invite'}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

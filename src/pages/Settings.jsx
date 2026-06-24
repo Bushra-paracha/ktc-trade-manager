@@ -3,6 +3,7 @@ import { Shield, Link2, Mail, Globe, Server, Loader2, AlertCircle } from 'lucide
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import { supabase } from '../lib/supabaseClient';
+import { useAuth } from '../hooks/useAuth';
 
 const ROLES = [
   { role: 'Admin / Owner', perms: 'Full access, user management, delete records' },
@@ -28,6 +29,8 @@ function initials(name, email) {
 }
 
 export default function Settings() {
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'Admin / Owner';
   const [tab, setTab] = useState('users');
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -117,7 +120,7 @@ export default function Settings() {
           <h1>Settings</h1>
           <p>Manage users, roles, and reference info for connected accounts</p>
         </div>
-        {tab === 'users' && (
+        {tab === 'users' && isAdmin && (
           <button className="btn btn-primary" onClick={() => { setInviteModal(true); setInviteResult(null); }}>
             <Shield size={15} /> Invite Team Member
           </button>
@@ -174,7 +177,9 @@ export default function Settings() {
                       <td className="cell-muted">{u.email}</td>
                       <td className="cell-muted">{u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
                       <td>
-                        <button className="btn btn-secondary btn-sm" onClick={() => openEdit(u)}>Edit</button>
+                        {isAdmin && (
+                          <button className="btn btn-secondary btn-sm" onClick={() => openEdit(u)}>Edit</button>
+                        )}
                       </td>
                     </tr>
                   ))}

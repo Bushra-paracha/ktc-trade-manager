@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, FileDown, Trash2, Loader2, AlertCircle, PackageCheck, Reply, Send } from 'lucide-react';
+import { Plus, FileDown, Trash2, Loader2, AlertCircle, PackageCheck, Reply, Send, Edit2 } from 'lucide-react';
 import { formatUSD } from '../data/mockData';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
@@ -38,11 +38,12 @@ const EMPTY_ITEM = () => ({
 export default function Inquiries() {
   const navigate = useNavigate();
   const { isAdminOrDirector } = useAuth();
-  const { inquiries, loading, error, createInquiry, updateInquiryStatus, deleteInquiry } = useInquiries();
+  const { inquiries, loading, error, createInquiry, updateInquiry, updateInquiryStatus, deleteInquiry } = useInquiries();
   const { clients } = useClients();
   const { products } = useProducts();
   const { convertInquiryToOrder } = useOrders();
   const [converting, setConverting] = useState(null);
+  const [editInquiry, setEditInquiry] = useState(null);
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
@@ -161,6 +162,18 @@ export default function Inquiries() {
     setFormError(null);
   }
 
+  function openEditInquiry(inquiry) {
+    setEditInquiry(inquiry);
+    setClientId(inquiry.client_id || '');
+    setIncoterm(inquiry.incoterm || 'FOB');
+    setDestinationPort(inquiry.destination_port || '');
+    setPaymentTerms(inquiry.payment_terms || 'LC at Sight');
+    setCertifications(inquiry.required_certifications || []);
+    setQuoteValidityDays(inquiry.quote_validity_days || 30);
+    setItems(inquiry.inquiry_items || []);
+    setModalOpen(true);
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setFormError(null);
@@ -177,27 +190,36 @@ export default function Inquiries() {
 
     setSaving(true);
 
-    const { error } = await createInquiry(
-      {
+    if (editInquiry) {
+      const { error } = await updateInquiry(editInquiry.id, {
         client_id: clientId,
         incoterm,
         destination_port: destinationPort,
         payment_terms: paymentTerms,
         required_certifications: certifications,
         quote_validity_days: Number(quoteValidityDays),
-        status: 'Pending Response',
-      },
-      validItems
-    );
-
-    setSaving(false);
-
-    if (error) {
-      setFormError(error);
-      return;
+      });
+      setSaving(false);
+      if (error) { setFormError(error); return; }
+    } else {
+      const { error } = await createInquiry(
+        {
+          client_id: clientId,
+          incoterm,
+          destination_port: destinationPort,
+          payment_terms: paymentTerms,
+          required_certifications: certifications,
+          quote_validity_days: Number(quoteValidityDays),
+          status: 'Pending Response',
+        },
+        validItems
+      );
+      setSaving(false);
+      if (error) { setFormError(error); return; }
     }
 
     resetForm();
+    setEditInquiry(null);
     setModalOpen(false);
   }
 
@@ -314,6 +336,13 @@ export default function Inquiries() {
                           <Reply size={16} />
                         </button>
                       )}
+                      <button
+                        className="icon-btn"
+                        title="Edit inquiry"
+                        onClick={() => openEditInquiry(i)}
+                      >
+                        <Edit2 size={16} />
+                      </button>
                       {(i.status === 'Accepted' || i.status === 'In Negotiation') && (
                         <button
                           className="icon-btn"
@@ -345,7 +374,7 @@ export default function Inquiries() {
         </div>
       )}
 
-      <Modal open={modalOpen} onClose={() => { setModalOpen(false); resetForm(); }} title="New Inquiry & Quotation">
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); resetForm(); setEditInquiry(null); }} title={editInquiry ? `Edit Inquiry ${editInquiry.id}` : 'New Inquiry & Quotation'}>
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <FormRow label="Client *">
             <select className="select-input" required value={clientId} onChange={(e) => setClientId(e.target.value)}>
@@ -413,7 +442,7 @@ export default function Inquiries() {
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button type="button" className="btn btn-secondary" onClick={() => { setModalOpen(false); resetForm(); }}>Cancel</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Saving...' : 'Create Inquiry'}
+              {saving ? 'Saving...' : editInquiry ? 'Save Changes' : 'Create Inquiry'}
             </button>
           </div>
         </form>

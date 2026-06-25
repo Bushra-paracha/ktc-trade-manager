@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, ArrowUpRight, Trash2, Loader2, AlertCircle, Upload, FileSpreadsheet, UserX, CheckSquare, Square, RefreshCw, TrendingUp, ArrowUpDown } from 'lucide-react';
+import { Plus, ArrowUpRight, Trash2, Loader2, AlertCircle, Upload, FileSpreadsheet, UserX, CheckSquare, Square, RefreshCw, TrendingUp, ArrowUpDown, Edit2 } from 'lucide-react';
 import Papa from 'papaparse';
 import { formatUSD } from '../data/mockData';
 import Badge from '../components/Badge';
@@ -42,7 +42,7 @@ const EMPTY_FORM = {
 };
 
 export default function Clients() {
-  const { clients, loading, error, refetch, addClient, deleteClient, bulkAddClients, bulkDeleteClients, bulkClearEmails } = useClients();
+  const { clients, loading, error, refetch, addClient, updateClient, deleteClient, bulkAddClients, bulkDeleteClients, bulkClearEmails } = useClients();
   const { isAdminOrDirector } = useAuth();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
@@ -53,6 +53,7 @@ export default function Clients() {
   const [rescoring, setRescoring] = useState(false);
   const [rescoreResult, setRescoreResult] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editClient, setEditClient] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -137,6 +138,27 @@ export default function Clients() {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  function openEdit(client) {
+    setEditClient(client);
+    setForm({
+      company: client.company || '',
+      contact: client.contact || '',
+      title: client.title || '',
+      country: client.country || '',
+      city: client.city || '',
+      email: client.email || '',
+      phone: client.phone || '',
+      source: client.source || 'B2B Platform',
+      products_interest: Array.isArray(client.products_interest) ? client.products_interest.join(', ') : (client.products_interest || ''),
+      est_volume: client.est_volume || '',
+      status: client.status || 'New',
+      score: client.score || 0,
+      assigned_to: client.assigned_to || '',
+      notes: client.notes || '',
+    });
+    setModalOpen(true);
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
@@ -149,19 +171,20 @@ export default function Clients() {
         .split(',')
         .map((p) => p.trim())
         .filter(Boolean),
-      revenue: 0,
-      orders: 0,
     };
 
-    const { error } = await addClient(payload);
-    setSaving(false);
-
-    if (error) {
-      setFormError(error);
-      return;
+    if (editClient) {
+      const { error } = await updateClient(editClient.id, payload);
+      setSaving(false);
+      if (error) { setFormError(error); return; }
+    } else {
+      const { error } = await addClient({ ...payload, revenue: 0, orders: 0 });
+      setSaving(false);
+      if (error) { setFormError(error); return; }
     }
 
     setForm(EMPTY_FORM);
+    setEditClient(null);
     setModalOpen(false);
   }
 
@@ -389,6 +412,9 @@ export default function Clients() {
                       <Link to={`/clients/${c.id}`} className="icon-btn" aria-label="View client">
                         <ArrowUpRight size={16} />
                       </Link>
+                      <button className="icon-btn" aria-label="Edit client" onClick={() => openEdit(c)}>
+                        <Edit2 size={16} />
+                      </button>
                       {isAdminOrDirector && (
                         <button className="icon-btn" aria-label="Delete client" onClick={() => handleDelete(c.id, c.company)}>
                           <Trash2 size={16} />
@@ -413,7 +439,7 @@ export default function Clients() {
         </div>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add New Lead">
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditClient(null); setForm(EMPTY_FORM); }} title={editClient ? `Edit — ${editClient.company}` : 'Add New Lead'}>
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <FormRow label="Company Name *">
             <input className="select-input" required value={form.company} onChange={(e) => updateForm('company', e.target.value)} />
@@ -481,7 +507,7 @@ export default function Clients() {
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
             <button type="button" className="btn btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Saving...' : 'Add Lead'}
+              {saving ? 'Saving...' : editClient ? 'Save Changes' : 'Add Lead'}
             </button>
           </div>
         </form>

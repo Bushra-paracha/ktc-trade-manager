@@ -44,7 +44,8 @@ export function useInquiries() {
     const { error: itemsError } = await supabase.from('inquiry_items').insert(itemsToInsert);
 
     if (itemsError) {
-      return { error: itemsError.message };
+      console.error('inquiry_items insert error:', itemsError, 'payload:', itemsToInsert);
+      return { error: `Inquiry saved, but line items failed: ${itemsError.message}` };
     }
 
     await fetchInquiries();
@@ -58,6 +59,13 @@ export function useInquiries() {
     return { success: true };
   }, [fetchInquiries]);
 
+  const updateInquiry = useCallback(async (id, updates) => {
+    const { error } = await supabase.from('inquiries').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) return { error: error.message };
+    await fetchInquiries();
+    return { success: true };
+  }, [fetchInquiries]);
+
   const deleteInquiry = useCallback(async (id) => {
     const { error } = await supabase.from('inquiries').delete().eq('id', id);
     if (error) return { error: error.message };
@@ -65,7 +73,7 @@ export function useInquiries() {
     return { success: true };
   }, []);
 
-  return { inquiries, loading, error, refetch: fetchInquiries, createInquiry, updateInquiryStatus, deleteInquiry };
+  return { inquiries, loading, error, refetch: fetchInquiries, createInquiry, updateInquiry, updateInquiryStatus, deleteInquiry };
 }
 
 // ---------- Single inquiry by id ----------

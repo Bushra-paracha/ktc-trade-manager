@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Mail, MousePointerClick, MessageSquareReply, AlertTriangle, Send, Loader2, CheckCircle2, XCircle, RefreshCw, ChevronDown, ChevronUp, Download, RotateCcw, ClipboardList, Copy, Trash2 } from 'lucide-react';
+import { Mail, MousePointerClick, MessageSquareReply, AlertTriangle, Send, Loader2, CheckCircle2, XCircle, RefreshCw, ChevronDown, ChevronUp, Download, RotateCcw, ClipboardList, Copy, Trash2, Plus } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import StatCard from '../components/StatCard';
 import Badge from '../components/Badge';
@@ -14,6 +14,9 @@ export default function Outreach() {
   const { messages, loading: messagesLoading, error: messagesError, refetch, checkForReplies, checkingReplies, checkError, checkResult } = useEmailMessages();
   const { templates, loading: templatesLoading, refetch: refetchTemplates } = useEmailTemplates();
   const [syncingTemplates, setSyncingTemplates] = useState(false);
+  const [createTemplateModal, setCreateTemplateModal] = useState(false);
+  const [newTemplate, setNewTemplate] = useState({ name: '', subject: '', body_html: '', category: 'General' });
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
 
   const [expandedId, setExpandedId] = useState(null);
@@ -165,6 +168,27 @@ export default function Outreach() {
     }
     setSyncResult({ data });
     refetchTemplates();
+  }
+
+  async function handleSaveTemplate() {
+    if (!newTemplate.name.trim() || !newTemplate.subject.trim() || !newTemplate.body_html.trim()) return;
+    setSavingTemplate(true);
+    const { data, error } = await supabase
+      .from('email_templates')
+      .insert([{
+        name: newTemplate.name,
+        subject: newTemplate.subject,
+        body_html: newTemplate.body_html,
+        category: newTemplate.category,
+      }])
+      .select()
+      .single();
+    setSavingTemplate(false);
+    if (error) { alert(`Failed to save: ${error.message}`); return; }
+    await refetchTemplates();
+    setCreateTemplateModal(false);
+    setNewTemplate({ name: '', subject: '', body_html: '', category: 'General' });
+    if (data) applyTemplate(data.id);
   }
 
   return (
@@ -411,6 +435,9 @@ export default function Outreach() {
                   <Trash2 size={14} />
                 </button>
               )}
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setNewTemplate({ name: '', subject: '', body_html: '', category: 'General' }); setCreateTemplateModal(true); }} title="Create a new template">
+                <Plus size={14} /> New
+              </button>
               <button type="button" className="btn btn-secondary btn-sm" onClick={handleSyncTemplates} disabled={syncingTemplates} title="Pull in any templates created in Brevo's own editor">
                 {syncingTemplates ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Download size={14} />}
                 Sync from Brevo
@@ -584,6 +611,45 @@ export default function Outreach() {
             <button className="btn btn-secondary" onClick={() => setBounceTableOpen(false)}>Close</button>
             <button className="btn btn-primary" onClick={copyBounceTable}>
               <Copy size={15} /> Copy Table
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Create Template Modal */}
+      <Modal open={createTemplateModal} onClose={() => setCreateTemplateModal(false)} title="Create New Template">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p style={{ fontSize: 12.5, color: 'var(--color-ink-soft)', margin: 0 }}>
+            Use <code style={{ background: 'var(--color-surface-alt)', padding: '1px 5px', borderRadius: 4 }}>{'{{company}}'}</code> and <code style={{ background: 'var(--color-surface-alt)', padding: '1px 5px', borderRadius: 4 }}>{'{{contact}}'}</code> for personalisation.
+          </p>
+          <FormRow label="Template Name *">
+            <input className="select-input" value={newTemplate.name} onChange={e => setNewTemplate(t => ({ ...t, name: e.target.value }))} placeholder="e.g. Rice Importers — Middle East" autoFocus />
+          </FormRow>
+          <FormRow label="Category">
+            <input className="select-input" value={newTemplate.category} onChange={e => setNewTemplate(t => ({ ...t, category: e.target.value }))} placeholder="e.g. Rice, Salt, General" />
+          </FormRow>
+          <FormRow label="Subject Line *">
+            <input className="select-input" value={newTemplate.subject} onChange={e => setNewTemplate(t => ({ ...t, subject: e.target.value }))} placeholder="e.g. Premium Pakistani Rice for {{company}}" />
+          </FormRow>
+          <FormRow label="Email Body *">
+            <textarea
+              className="select-input"
+              rows={16}
+              value={newTemplate.body_html}
+              onChange={e => setNewTemplate(t => ({ ...t, body_html: e.target.value }))}
+              placeholder="Write your email body here. Use {{company}} and {{contact}} for personalisation..."
+              style={{ fontFamily: 'inherit', fontSize: 13, whiteSpace: 'pre-wrap' }}
+            />
+          </FormRow>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button className="btn btn-secondary" onClick={() => setCreateTemplateModal(false)}>Cancel</button>
+            <button
+              className="btn btn-primary"
+              onClick={handleSaveTemplate}
+              disabled={savingTemplate || !newTemplate.name.trim() || !newTemplate.subject.trim() || !newTemplate.body_html.trim()}
+            >
+              {savingTemplate ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Plus size={14} />}
+              {savingTemplate ? 'Saving...' : 'Save & Apply Template'}
             </button>
           </div>
         </div>

@@ -60,7 +60,7 @@ export function useInquiries() {
   }, [fetchInquiries]);
 
   const updateInquiry = useCallback(async (id, updates) => {
-    const { error } = await supabase.from('inquiries').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id);
+    const { error } = await supabase.from('inquiries').update(updates).eq('id', id);
     if (error) return { error: error.message };
     await fetchInquiries();
     return { success: true };

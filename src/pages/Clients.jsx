@@ -49,6 +49,7 @@ export default function Clients() {
   const [country, setCountry] = useState('');
   const [segment, setSegment] = useState('');
   const [scoreTier, setScoreTier] = useState('');
+  const [contactMethodFilter, setContactMethodFilter] = useState('');
   const [sortByScore, setSortByScore] = useState(false);
   const [rescoring, setRescoring] = useState(false);
   const [rescoreResult, setRescoreResult] = useState(null);
@@ -126,13 +127,14 @@ export default function Clients() {
       const matchesCountry = !country || c.country === country;
       const matchesSegment = !segment || getSegment(c) === segment;
       const matchesTier = !scoreTier || getScoreTier(c.score || 0) === scoreTier;
-      return matchesSearch && matchesStatus && matchesCountry && matchesSegment && matchesTier;
+      const matchesContactMethod = !contactMethodFilter || c.contact_method === contactMethodFilter;
+      return matchesSearch && matchesStatus && matchesCountry && matchesSegment && matchesTier && matchesContactMethod;
     });
     if (sortByScore) {
       list = [...list].sort((a, b) => (b.score || 0) - (a.score || 0));
     }
     return list;
-  }, [clients, search, status, country, segment, scoreTier, sortByScore]);
+  }, [clients, search, status, country, segment, scoreTier, sortByScore, contactMethodFilter]);
 
   function updateForm(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -308,6 +310,11 @@ export default function Clients() {
         <SelectInput value={segment} onChange={setSegment} options={segments} label="All Segments" />
         <SelectInput value={status} onChange={setStatus} options={STATUSES} label="All Statuses" />
         <SelectInput value={country} onChange={setCountry} options={countries} label="All Countries" />
+        <select className="select-input" value={contactMethodFilter} onChange={(e) => setContactMethodFilter(e.target.value)}>
+          <option value="">All Contact Types</option>
+          <option value="Email">📧 Email Only</option>
+          <option value="WhatsApp Only">📱 WhatsApp / Phone Only</option>
+        </select>
         <select className="select-input" value={scoreTier} onChange={(e) => setScoreTier(e.target.value)}>
           <option value="">All Tiers</option>
           <option value="Hot">🔥 Hot (80-100)</option>

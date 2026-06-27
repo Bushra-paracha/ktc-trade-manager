@@ -5,13 +5,14 @@ export default function InquiryItemEditor({ item, products, onChange, onRemove }
   function updateField(field, value) {
     const updated = { ...item, [field]: value };
 
-    // If product changed, prefill base cost / packaging cost from catalog
+    // If product changed, prefill product name
     if (field === 'product_id') {
       const product = products.find((p) => p.id === value);
       if (product) {
         updated.product_name = product.name;
-        updated.base_cost = product.base_cost;
-        updated.packaging_cost = product.packaging_cost;
+        // Only prefill costs if they exist on the product, otherwise keep current values
+        if (product.base_cost != null) updated.base_cost = product.base_cost;
+        if (product.packaging_cost != null) updated.packaging_cost = product.packaging_cost;
       }
     }
 

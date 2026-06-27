@@ -59,9 +59,31 @@ export function useInquiries() {
     return { success: true };
   }, [fetchInquiries]);
 
-  const updateInquiry = useCallback(async (id, updates) => {
-    const { error } = await supabase.from('inquiries').update(updates).eq('id', id);
+  // Updates inquiry header + replaces all line items
+  const updateInquiry = useCallback(async (id, updates, items) => {
+    // 1. Update inquiry header fields
+    const total_value = items ? calculateInquiryTotal(items) : undefined;
+    const { error } = await supabase
+      .from('inquiries')
+      .update({ ...updates, ...(total_value !== undefined && { total_value }) })
+      .eq('id', id);
     if (error) return { error: error.message };
+
+    // 2. If items provided, delete old items and re-insert updated ones
+    if (items && items.length > 0) {
+      const { error: deleteError } = await supabase
+        .from('inquiry_items')
+        .delete()
+        .eq('inquiry_id', id);
+      if (deleteError) return { error: deleteError.message };
+
+      const itemsToInsert = items.map((item) => ({ ...item, inquiry_id: id }));
+      const { error: insertError } = await supabase
+        .from('inquiry_items')
+        .insert(itemsToInsert);
+      if (insertError) return { error: insertError.message };
+    }
+
     await fetchInquiries();
     return { success: true };
   }, [fetchInquiries]);

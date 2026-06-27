@@ -29,7 +29,7 @@ const EMPTY_ITEM = () => ({
   export_duties: 5,
   freight_cost: 60,
   inspection_cost: 5,
-  margin_percent: 10,
+  margin_percent: 0,
   cost_subtotal: 0,
   unit_price: 0,
   line_total: 0,
@@ -198,7 +198,7 @@ export default function Inquiries() {
         payment_terms: paymentTerms,
         required_certifications: certifications,
         quote_validity_days: Number(quoteValidityDays),
-      });
+      }, validItems);
       setSaving(false);
       if (error) { setFormError(error); return; }
     } else {

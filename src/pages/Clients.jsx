@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, ArrowUpRight, Trash2, Loader2, AlertCircle, Upload, FileSpreadsheet, UserX, CheckSquare, Square, RefreshCw, TrendingUp, ArrowUpDown, Edit2 } from 'lucide-react';
+import { Plus, ArrowUpRight, Trash2, Loader2, AlertCircle, Upload, Download, FileSpreadsheet, UserX, CheckSquare, Square, RefreshCw, TrendingUp, ArrowUpDown, Edit2 } from 'lucide-react';
 import Papa from 'papaparse';
 import { formatUSD } from '../data/mockData';
 import Badge from '../components/Badge';
@@ -270,6 +270,32 @@ export default function Clients() {
               <UserX size={16} /> Clean Up ({noEmailClients.length})
             </button>
           )}
+          <button className="btn btn-secondary" onClick={() => {
+            const headers = ['Company', 'Contact', 'Email', 'Phone', 'Country', 'City', 'Status', 'Score', 'Contact Method', 'Products Interest', 'Notes'];
+            const rows = filtered.map(c => [
+              c.company || '',
+              c.contact || '',
+              c.email || '',
+              c.phone || '',
+              c.country || '',
+              c.city || '',
+              c.status || '',
+              c.score || '',
+              c.contact_method || '',
+              (c.products_interest || []).join('; '),
+              (c.notes || '').replace(/,/g, ';')
+            ]);
+            const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `ktc-clients-${new Date().toISOString().slice(0,10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }}>
+            <Download /> Export CSV
+          </button>
           <button className="btn btn-secondary" onClick={openImportModal}>
             <Upload /> Import CSV
           </button>

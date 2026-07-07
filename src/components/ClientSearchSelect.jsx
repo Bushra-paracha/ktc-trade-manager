@@ -1,19 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, X, User, ChevronDown, Check } from 'lucide-react';
 
-/**
- * ClientSearchSelect — a searchable, keyboard-navigable picker for choosing a client.
- *
- * Drop-in replacement: same props as before, so existing usages (Orders) keep working.
- *
- * Props:
- *   clients      — array of client objects from useClients()
- *   value        — currently selected client id
- *   onChange     — callback(id) when selection changes ('' when cleared)
- *   placeholder  — trigger placeholder text (optional)
- *   disabled     — boolean (optional)
- *   autoFocus    — open immediately on mount (optional)
- */
 export default function ClientSearchSelect({
   clients = [],
   value,
@@ -25,6 +12,7 @@ export default function ClientSearchSelect({
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
+  const [selectedClient, setSelectedClient] = useState(null);
 
   const containerRef = useRef(null);
   const inputRef = useRef(null);
@@ -32,7 +20,10 @@ export default function ClientSearchSelect({
 
   const normalizeId = (v) => String(v ?? '').trim();
 
-  const selected = clients.find((c) => normalizeId(c.id) === normalizeId(value));
+  useEffect(() => {
+    const next = clients.find((c) => normalizeId(c.id) === normalizeId(value)) || null;
+    setSelectedClient(next);
+  }, [clients, value]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -40,17 +31,15 @@ export default function ClientSearchSelect({
     return clients
       .filter((c) =>
         [c.company, c.contact, c.country, c.email, c.id]
-          .some((field) => (field || '').toLowerCase().includes(q))
+          .some((field) => String(field || '').toLowerCase().includes(q))
       )
       .slice(0, 50);
   }, [clients, query]);
 
-  // Keep the highlighted row valid as the list changes.
   useEffect(() => {
     setHighlight(0);
   }, [query, open]);
 
-  // Close on outside click.
   useEffect(() => {
     function onDown(e) {
       if (containerRef.current && !containerRef.current.contains(e.target)) {
@@ -61,13 +50,10 @@ export default function ClientSearchSelect({
     return () => document.removeEventListener('mousedown', onDown);
   }, []);
 
-  // Open on mount if requested.
   useEffect(() => {
     if (autoFocus) openMenu();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [autoFocus]);
 
-  // Keep the highlighted option scrolled into view.
   useEffect(() => {
     if (!open || !listRef.current) return;
     const el = listRef.current.querySelector(`[data-idx="${highlight}"]`);
@@ -86,13 +72,15 @@ export default function ClientSearchSelect({
   }
 
   function select(client) {
-    onChange(normalizeId(client.id));
+    setSelectedClient(client);
+    onChange?.(normalizeId(client.id));
     close();
   }
 
   function clear(e) {
     e.stopPropagation();
-    onChange('');
+    setSelectedClient(null);
+    onChange?.('');
     setQuery('');
   }
 
@@ -121,7 +109,7 @@ export default function ClientSearchSelect({
   }
 
   function label(c) {
-    return c.company || c.contact || c.email || c.id;
+    return c?.company || c?.contact || c?.email || c?.id || '';
   }
 
   return (
@@ -139,17 +127,17 @@ export default function ClientSearchSelect({
         onKeyDown={onTriggerKeyDown}
       >
         <User size={14} className="csc-lead-icon" aria-hidden />
-        <span className={'csc-value' + (selected ? '' : ' csc-placeholder')}>
-          {selected ? (
+        <span className={'csc-value' + (selectedClient ? '' : ' csc-placeholder')}>
+          {selectedClient ? (
             <>
-              {label(selected)}
-              {selected.country && <span className="csc-value-sub"> · {selected.country}</span>}
+              {label(selectedClient)}
+              {selectedClient.country && <span className="csc-value-sub"> · {selectedClient.country}</span>}
             </>
           ) : (
             placeholder
           )}
         </span>
-        {selected && !disabled ? (
+        {selectedClient && !disabled ? (
           <button type="button" className="csc-icon-btn" onClick={clear} aria-label="Clear selection">
             <X size={14} />
           </button>
@@ -186,7 +174,7 @@ export default function ClientSearchSelect({
               </div>
             ) : (
               filtered.map((c, idx) => {
-                const isSelected = normalizeId(c.id) === normalizeId(value);
+                const isSelected = normalizeId(c.id) === normalizeId(selectedClient?.id);
                 const isActive = idx === highlight;
                 return (
                   <div
@@ -196,7 +184,10 @@ export default function ClientSearchSelect({
                     aria-selected={isSelected}
                     className={'csc-option' + (isActive ? ' csc-option-active' : '')}
                     onMouseEnter={() => setHighlight(idx)}
-                    onClick={() => select(c)}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      select(c);
+                    }}
                   >
                     <div className="csc-option-main">
                       <span className="csc-option-name">{label(c)}</span>
@@ -223,64 +214,48 @@ export default function ClientSearchSelect({
   );
 }
 
-// Scoped styles keyed to the app's real design tokens. All classes are `csc-`
-// prefixed so nothing collides with index.css.
 function ScopedStyles() {
   return (
     <style>{`
-      .csc { position:relative; width:100%; }
-
-      .csc-trigger { display:flex; align-items:center; gap:8px; width:100%;
-        padding:8px 10px; min-height:38px; text-align:left; cursor:pointer;
-        background:var(--color-surface); border:1px solid var(--color-border);
-        border-radius:var(--radius-md); font-family:var(--font-body); font-size:13.5px;
-        color:var(--color-ink); transition:border-color var(--transition); }
-      .csc-trigger:hover { border-color:var(--color-ink-faint); }
-      .csc-trigger:focus-visible { outline:2px solid var(--color-primary); outline-offset:1px; }
-      .csc-trigger[aria-disabled="true"] { background:var(--color-surface-alt); opacity:.6; cursor:not-allowed; }
-
-      .csc-lead-icon { color:var(--color-ink-faint); flex:0 0 auto; }
-      .csc-value { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-      .csc-placeholder { color:var(--color-ink-faint); }
-      .csc-value-sub { color:var(--color-ink-soft); }
-      .csc-chevron { color:var(--color-ink-faint); flex:0 0 auto; }
-
-      .csc-icon-btn { display:inline-flex; align-items:center; justify-content:center;
-        background:none; border:0; padding:2px; cursor:pointer; color:var(--color-ink-faint);
-        border-radius:var(--radius-sm); }
-      .csc-icon-btn:hover { color:var(--color-ink); background:var(--color-surface-alt); }
-
-      .csc-menu { position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:1000;
-        background:var(--color-surface); border:1px solid var(--color-border);
-        border-radius:var(--radius-md); box-shadow:var(--shadow-lg);
-        display:flex; flex-direction:column; overflow:hidden; }
-
-      .csc-search { display:flex; align-items:center; gap:8px; padding:8px 10px;
-        border-bottom:1px solid var(--color-border); color:var(--color-ink-faint); }
-      .csc-search input { flex:1; border:0; outline:0; background:transparent;
-        font-family:var(--font-body); font-size:13.5px; color:var(--color-ink); }
-
-      .csc-list { overflow-y:auto; max-height:264px; }
-      .csc-empty { padding:18px 12px; text-align:center; font-size:13px; color:var(--color-ink-faint); }
-
-      .csc-option { padding:8px 12px; cursor:pointer; border-bottom:1px solid var(--color-border); }
-      .csc-option:last-child { border-bottom:0; }
-      .csc-option-active { background:var(--color-primary-soft); }
-      .csc-option-main { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-      .csc-option-name { font-size:13.5px; font-weight:600; color:var(--color-ink);
-        overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-      .csc-check { color:var(--color-primary); flex:0 0 auto; }
-      .csc-option-sub { display:flex; flex-wrap:wrap; gap:0 6px; margin-top:2px;
-        font-size:11.5px; color:var(--color-ink-soft); }
-      .csc-sub-sep::before { content:'·'; margin-right:6px; color:var(--color-ink-faint); }
-      .csc-email { color:var(--color-ink-faint); }
-
-      .csc-count { padding:6px 12px; font-size:11px; color:var(--color-ink-faint);
-        border-top:1px solid var(--color-border); text-align:right; }
-
-      @media (prefers-reduced-motion: reduce) {
-        .csc-trigger { transition:none; }
+      .csc { position: relative; width: 100%; }
+      .csc-trigger {
+        width: 100%; min-height: 44px; border: 1px solid var(--border, #d9e1da);
+        background: var(--card, #fff); border-radius: 16px; display: flex; align-items: center;
+        gap: 10px; padding: 0 14px; cursor: pointer; transition: border-color .18s ease, box-shadow .18s ease;
       }
+      .csc-trigger:hover { border-color: var(--green-600, #2b7a4b); }
+      .csc-trigger:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(43,122,75,.14); border-color: var(--green-600, #2b7a4b); }
+      .csc-lead-icon, .csc-chevron { color: var(--muted, #7c8b81); flex: 0 0 auto; }
+      .csc-value { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text, #1d2a22); }
+      .csc-placeholder { color: var(--muted, #97a398); }
+      .csc-value-sub { color: var(--muted, #7c8b81); }
+      .csc-icon-btn {
+        border: 0; background: transparent; width: 28px; height: 28px; border-radius: 10px; display: inline-grid; place-items: center; cursor: pointer; color: var(--muted, #7c8b81);
+      }
+      .csc-icon-btn:hover { background: rgba(16,24,18,.05); color: var(--text, #1d2a22); }
+      .csc-menu {
+        position: absolute; top: calc(100% + 8px); left: 0; right: 0; z-index: 60;
+        background: var(--card, #fff); border: 1px solid var(--border, #d9e1da); border-radius: 18px;
+        box-shadow: 0 18px 38px rgba(16,24,18,.10); overflow: hidden;
+      }
+      .csc-search {
+        display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border, #edf1ee);
+      }
+      .csc-search input {
+        flex: 1 1 auto; border: 0; outline: 0; background: transparent; font: inherit; color: var(--text, #1d2a22);
+      }
+      .csc-list { max-height: 260px; overflow: auto; }
+      .csc-empty { padding: 16px 14px; color: var(--muted, #7c8b81); }
+      .csc-option { padding: 12px 14px; cursor: pointer; border-bottom: 1px solid var(--border, #f2f4f2); }
+      .csc-option:last-child { border-bottom: 0; }
+      .csc-option-active, .csc-option:hover { background: rgba(43,122,75,.08); }
+      .csc-option-main { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .csc-option-name { font-weight: 600; color: var(--text, #1d2a22); }
+      .csc-check { color: var(--green-600, #2b7a4b); }
+      .csc-option-sub { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted, #7c8b81); font-size: 12px; }
+      .csc-sub-sep::before { content: '•'; margin-right: 8px; color: #c8d0ca; }
+      .csc-email { word-break: break-all; }
+      .csc-count { padding: 10px 14px; border-top: 1px solid var(--border, #edf1ee); color: var(--muted, #7c8b81); font-size: 12px; }
     `}</style>
   );
 }

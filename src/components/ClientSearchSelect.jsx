@@ -30,7 +30,9 @@ export default function ClientSearchSelect({
   const inputRef = useRef(null);
   const listRef = useRef(null);
 
-  const selected = clients.find((c) => c.id === value);
+  const normalizeId = (v) => String(v ?? '').trim();
+
+  const selected = clients.find((c) => normalizeId(c.id) === normalizeId(value));
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -84,7 +86,7 @@ export default function ClientSearchSelect({
   }
 
   function select(client) {
-    onChange(client.id);
+    onChange(normalizeId(client.id));
     close();
   }
 
@@ -184,7 +186,7 @@ export default function ClientSearchSelect({
               </div>
             ) : (
               filtered.map((c, idx) => {
-                const isSelected = c.id === value;
+                const isSelected = normalizeId(c.id) === normalizeId(value);
                 const isActive = idx === highlight;
                 return (
                   <div

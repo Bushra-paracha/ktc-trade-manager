@@ -212,7 +212,7 @@ export default function Orders() {
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Create New Export Order">
         <div className="form-grid">
-          <label className="field-label">Buyer<ClientSearchSelect clients={clients} value={form.client_id} onChange={(id) => setForm({ ...form, client_id: id })} /></label>
+          <label className="field-label">Buyer<ClientSearchSelect clients={clients} value={String(form.client_id ?? '')} onChange={(id) => setForm((f) => ({ ...f, client_id: String(id ?? '').trim() }))} /></label>
           <label className="field-label">Status<select className="select-input" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>{ORDER_STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}</select></label>
           <label className="field-label">Incoterm<select className="select-input" value={form.incoterm} onChange={(e) => setForm({ ...form, incoterm: e.target.value })}>{['FOB', 'CFR', 'CIF', 'EXW'].map((item) => <option key={item}>{item}</option>)}</select></label>
           <label className="field-label">Payment<select className="select-input" value={form.payment_method} onChange={(e) => setForm({ ...form, payment_method: e.target.value })}>{['LC', 'TT', 'CAD', 'DP', 'Advance'].map((item) => <option key={item}>{item}</option>)}</select></label>

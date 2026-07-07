@@ -1,487 +1,236 @@
-import { useState, useRef } from 'react';
-import ClientSearchSelect from '../components/ClientSearchSelect';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Loader2, AlertCircle, Trash2, Plus, Edit2, FileText, Upload, X } from 'lucide-react';
+import { AlertCircle, ArrowUpDown, CalendarClock, Download, Edit2, FileText, Loader2, Plus, Search, Ship, Trash2 } from 'lucide-react';
+import ClientSearchSelect from '../components/ClientSearchSelect';
+import Modal from '../components/Modal';
+import Badge from '../components/Badge';
+import OrderSummaryCards from '../components/orders/OrderSummaryCards';
+import StageTracker from '../components/orders/StageTracker';
 import { formatUSD } from '../data/mockData';
-import { useOrders } from '../hooks/useOrders';
 import { useAuth } from '../hooks/useAuth';
 import { useClients } from '../hooks/useClients';
-import Modal from '../components/Modal';
-import { supabase } from '../lib/supabaseClient';
-
-const COLUMNS = ['Confirmed', 'In Production', 'Ready to Ship', 'Shipped', 'Delivered'];
-
-const DOCUMENT_TYPES = [
-  'Proforma Invoice',
-  'Sales Contract',
-  'Commercial Invoice',
-  'Packing List',
-  'Bill of Lading',
-  'Certificate of Origin',
-  'Phytosanitary Certificate',
-  'Fumigation Certificate',
-  'SGS Inspection Report',
-  'LC (Letter of Credit)',
-  'Other',
-];
+import { useOrders } from '../hooks/useOrders';
+import { ORDER_STATUS_OPTIONS, getDocsProgress, getOrderUrgency, getStageProgress, normalizeStatus } from '../lib/orderWorkflow';
 
 export default function Orders() {
   const { orders, loading, error, deleteOrder, createOrder, updateOrder } = useOrders();
   const { clients } = useClients();
   const { isAdminOrDirector } = useAuth();
+
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [sortBy, setSortBy] = useState('Newest');
   const [modalOpen, setModalOpen] = useState(false);
   const [editModal, setEditModal] = useState(false);
-  const [editOrder, setEditOrder] = useState(null);
-  const [docModal, setDocModal] = useState(false);
-  const [docOrder, setDocOrder] = useState(null);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ client_id: '', status: 'Confirmed', incoterm: 'FOB', payment_method: 'LC' });
   const [editForm, setEditForm] = useState({});
-  const [saving, setSaving] = useState(false);
-  const [docForm, setDocForm] = useState({ doc_type: 'Proforma Invoice', doc_name: '', doc_notes: '' });
-  const [docSaving, setDocSaving] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(null);
-  const [documents, setDocuments] = useState({});
-  const fileInputRef = useRef(null);
 
-  async function handleDelete(id, company) {
-    const confirmed = window.confirm(
-      `Delete order ${id} for ${company || 'this client'}?\n\nThis will permanently remove the order, its line items, shipment records, and document checklist. This cannot be undone.`
-    );
-    if (!confirmed) return;
-    const { error } = await deleteOrder(id);
-    if (error) alert(`Couldn't delete order: ${error}`);
-  }
+  const filteredOrders = useMemo(() => {
+    const text = query.trim().toLowerCase();
+    let list = orders.filter((order) => {
+      const searchable = [
+        order.id,
+        order.clients?.company,
+        order.clients?.country,
+        order.status,
+        order.incoterm,
+        order.payment_method,
+        order.pod_port,
+        ...(order.order_items || []).map((item) => item.product_name),
+      ].filter(Boolean).join(' ').toLowerCase();
+
+      const matchesSearch = !text || searchable.includes(text);
+      const matchesStatus = statusFilter === 'All' || normalizeStatus(order.status) === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+
+    if (sortBy === 'Value') list = [...list].sort((a, b) => Number(b.total_value || 0) - Number(a.total_value || 0));
+    if (sortBy === 'Deadline') list = [...list].sort((a, b) => new Date(a.shipment_deadline || '2999-01-01') - new Date(b.shipment_deadline || '2999-01-01'));
+    if (sortBy === 'Progress') list = [...list].sort((a, b) => getStageProgress(a.status) - getStageProgress(b.status));
+    return list;
+  }, [orders, query, statusFilter, sortBy]);
 
   async function handleCreate() {
-    if (!form.client_id) return alert('Please select a client');
+    if (!form.client_id) return alert('Please select a buyer first.');
     setSaving(true);
     const { error } = await createOrder(form);
     setSaving(false);
-    if (error) alert(`Couldn't create order: ${error}`);
-    else { setModalOpen(false); setForm({ client_id: '', status: 'Confirmed', incoterm: 'FOB', payment_method: 'LC' }); }
+    if (error) return alert(`Couldn't create order: ${error}`);
+    setModalOpen(false);
+    setForm({ client_id: '', status: 'Confirmed', incoterm: 'FOB', payment_method: 'LC' });
   }
 
-  function openEdit(o) {
-    setEditOrder(o);
+  function openEdit(order) {
+    setSelectedOrder(order);
     setEditForm({
-      status: o.status || 'Confirmed',
-      incoterm: o.incoterm || 'FOB',
-      payment_method: o.payment_method || 'LC',
-      pol_port: o.pol_port || '',
-      pod_port: o.pod_port || '',
-      total_value: o.total_value || '',
-      shipment_deadline: o.shipment_deadline ? o.shipment_deadline.slice(0, 10) : '',
-      special_instructions: o.special_instructions || '',
-      production_progress: o.production_progress || 0,
+      status: order.status || 'Confirmed',
+      incoterm: order.incoterm || 'FOB',
+      payment_method: order.payment_method || 'LC',
+      pol_port: order.pol_port || '',
+      pod_port: order.pod_port || '',
+      total_value: order.total_value || '',
+      shipment_deadline: order.shipment_deadline ? order.shipment_deadline.slice(0, 10) : '',
+      production_progress: order.production_progress || 0,
+      special_instructions: order.special_instructions || '',
     });
     setEditModal(true);
   }
 
   async function handleEdit() {
     setSaving(true);
-    const { error } = await updateOrder(editOrder.id, editForm);
+    const { error } = await updateOrder(selectedOrder.id, editForm);
     setSaving(false);
-    if (error) alert(`Couldn't update order: ${error}`);
-    else setEditModal(false);
+    if (error) return alert(`Couldn't update order: ${error}`);
+    setEditModal(false);
   }
 
-  async function openDocModal(o) {
-    setDocOrder(o);
-    setDocForm({ doc_type: 'Proforma Invoice', doc_name: '', doc_notes: '' });
-    setUploadProgress(null);
-    setDocModal(true);
-    const { data, error } = await supabase
-      .from('order_documents')
-      .select('*')
-      .eq('order_id', o.id)
-      .order('created_at', { ascending: false });
-    if (!error && data) {
-      setDocuments(prev => ({
-        ...prev,
-        [o.id]: data.map(d => ({
-          doc_type: d.document_type,
-          doc_name: d.file_name || d.document_type,
-          doc_url: d.file_url || '',
-          doc_notes: d.notes || '',
-          added_at: d.created_at,
-        }))
-      }));
-    }
+  async function handleDelete(order) {
+    if (!window.confirm(`Delete ${order.id} for ${order.clients?.company || 'this buyer'}? This cannot be undone.`)) return;
+    const { error } = await deleteOrder(order.id);
+    if (error) alert(`Couldn't delete order: ${error}`);
   }
 
-  async function handleFileUpload(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    // Only allow PDF, images, Word docs
-    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-    if (!allowed.includes(file.type)) {
-      alert('Only PDF, JPG, PNG or Word documents are allowed.');
-      return;
-    }
-
-    if (!docForm.doc_name) {
-      setDocForm(f => ({ ...f, doc_name: file.name.replace(/\.[^/.]+$/, '') }));
-    }
-
-    setDocSaving(true);
-    setUploadProgress('Uploading...');
-
-    const filePath = `${docOrder.id}/${Date.now()}-${file.name}`;
-    const { data, error } = await supabase.storage
-      .from('order-documents')
-      .upload(filePath, file, { upsert: false });
-
-    if (error) {
-      alert(`Upload failed: ${error.message}`);
-      setDocSaving(false);
-      setUploadProgress(null);
-      return;
-    }
-
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from('order-documents')
-      .getPublicUrl(filePath);
-
-    const docUrl = urlData?.publicUrl || '';
-    const docName = docForm.doc_name || file.name;
-
-    // Save to order_documents table
-    const { error: dbError } = await supabase.from('order_documents').insert([{
-      order_id: docOrder.id,
-      document_type: docForm.doc_type,
-      status: 'Uploaded',
-      file_url: docUrl,
-      file_name: docName,
-      notes: docForm.doc_notes,
-    }]);
-
-    if (dbError) {
-      // If DB insert fails, still save locally
-      console.warn('DB insert failed, saving locally:', dbError.message);
-    }
-
-    // Save locally for immediate display
-    const key = docOrder.id;
-    const existing = documents[key] || [];
-    setDocuments(prev => ({
-      ...prev,
-      [key]: [...existing, {
-        doc_type: docForm.doc_type,
-        doc_name: docName,
-        doc_url: docUrl,
-        doc_notes: docForm.doc_notes,
-        added_at: new Date().toISOString(),
-      }]
+  function exportCsv() {
+    const rows = filteredOrders.map((order) => ({
+      id: order.id,
+      buyer: order.clients?.company || '',
+      country: order.clients?.country || '',
+      status: order.status || '',
+      value: order.total_value || 0,
+      incoterm: order.incoterm || '',
+      payment_method: order.payment_method || '',
+      pod_port: order.pod_port || '',
+      shipment_deadline: order.shipment_deadline || '',
     }));
-
-    setUploadProgress('✅ Uploaded successfully!');
-    setDocForm({ doc_type: docForm.doc_type, doc_name: '', doc_notes: '' });
-    setDocSaving(false);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    const headers = Object.keys(rows[0] || { id: '', buyer: '', country: '', status: '', value: '', incoterm: '', payment_method: '', pod_port: '', shipment_deadline: '' });
+    const csv = [headers.join(','), ...rows.map((row) => headers.map((h) => `"${String(row[h] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ktc-orders-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
-    <div>
-      <div className="page-header">
+    <div className="orders-workspace">
+      <div className="page-header elevated-header">
         <div>
+          <span className="eyebrow">Export Operations</span>
           <h1>Orders</h1>
-          <p>{orders.length} orders · convert inquiries or create directly</p>
+          <p>Manage confirmed deals, production, documents and shipments from one workflow.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setModalOpen(true)}>
-          <Plus size={16} /> New Order
-        </button>
+        <div className="header-actions">
+          <button className="btn btn-secondary" onClick={exportCsv}><Download size={16} /> Export CSV</button>
+          <button className="btn btn-primary" onClick={() => setModalOpen(true)}><Plus size={16} /> New Order</button>
+        </div>
       </div>
 
+      <OrderSummaryCards orders={orders} />
+
       {error && (
-        <div className="card" style={{ marginBottom: 16, background: 'var(--color-danger-soft)', border: '1px solid var(--color-danger)' }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <AlertCircle size={18} color="var(--color-danger)" />
-            <div>
-              <strong style={{ color: 'var(--color-danger)' }}>Couldn't load orders</strong>
-              <p style={{ margin: '4px 0 0', fontSize: 13 }}>{error}</p>
-            </div>
-          </div>
+        <div className="card alert-card danger-alert">
+          <AlertCircle size={18} />
+          <div><strong>Couldn't load orders</strong><p>{error}</p></div>
         </div>
       )}
 
-      {loading ? (
-        <div className="card" style={{ textAlign: 'center', padding: 48 }}>
-          <Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} />
-          <p style={{ marginTop: 12, color: 'var(--color-ink-soft)' }}>Loading orders...</p>
+      <div className="card order-control-card">
+        <div className="orders-toolbar">
+          <div className="search-box wide-search"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search buyer, country, product, port or order ID..." /></div>
+          <select className="select-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option>All</option>
+            {ORDER_STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}
+          </select>
+          <select className="select-input" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+            <option>Newest</option>
+            <option>Value</option>
+            <option>Deadline</option>
+            <option>Progress</option>
+          </select>
         </div>
-      ) : (
-        <>
-          <div className="kanban">
-            {COLUMNS.map((col) => {
-              const colOrders = orders.filter((o) => o.status === col);
-              return (
-                <div className="kanban-col" key={col}>
-                  <div className="kanban-col-header">
-                    <span className="kanban-col-title">{col}</span>
-                    <span className="kanban-count">{colOrders.length}</span>
-                  </div>
-                  {colOrders.map((o) => (
-                    <Link to={`/orders/${o.id}`} className="kanban-card" key={o.id} style={{ color: 'inherit' }}>
-                      <div className="kanban-card-title">{o.id}</div>
-                      <div className="cell-muted">{o.clients?.company || '—'}</div>
-                      <div className="progress-track">
-                        <div className="progress-fill" style={{ width: `${o.production_progress || 0}%` }} />
-                      </div>
-                      <div className="kanban-card-meta">
-                        <span>{formatUSD(o.total_value)}</span>
-                        <span>{o.shipment_deadline ? `Due ${new Date(o.shipment_deadline).toLocaleDateString()}` : 'No deadline set'}</span>
-                      </div>
-                    </Link>
-                  ))}
-                  {colOrders.length === 0 && (
-                    <div className="cell-muted" style={{ textAlign: 'center', padding: '20px 0' }}>No orders</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
 
-          <div style={{ marginTop: 24 }}>
-            <div className="section-label">All Orders ({orders.length})</div>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Order ID</th>
-                    <th>Client</th>
-                    <th>Products</th>
-                    <th>Value</th>
-                    <th>Incoterm</th>
-                    <th>Deadline</th>
-                    <th>Status</th>
-                    <th>Docs</th>
-                    {isAdminOrDirector && <th></th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.map((o) => (
-                    <tr key={o.id}>
+        {loading ? (
+          <div className="empty-state"><Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} /><h4>Loading orders...</h4></div>
+        ) : filteredOrders.length === 0 ? (
+          <div className="empty-state"><Ship /><h4>No orders found</h4><p>Create a new order or adjust the search/filter.</p></div>
+        ) : (
+          <div className="orders-table-wrap">
+            <table className="data-table orders-table">
+              <thead>
+                <tr>
+                  <th>Order / Buyer</th>
+                  <th>Workflow</th>
+                  <th>Products</th>
+                  <th>Value</th>
+                  <th><span className="inline-th"><CalendarClock size={14} /> Deadline</span></th>
+                  <th>Docs</th>
+                  <th><span className="inline-th"><ArrowUpDown size={14} /> Actions</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredOrders.map((order) => {
+                  const urgency = getOrderUrgency(order);
+                  const docs = getDocsProgress(order.order_documents || []);
+                  return (
+                    <tr key={order.id}>
                       <td>
-                        <Link to={`/orders/${o.id}`} className="cell-strong" style={{ color: 'var(--color-primary)' }}>{o.id}</Link>
+                        <Link to={`/orders/${order.id}`} className="order-title-link">{order.id}</Link>
+                        <div className="cell-muted">{order.clients?.company || 'Unknown buyer'} · {order.clients?.country || '—'}</div>
                       </td>
-                      <td>{o.clients?.company || '—'}</td>
-                      <td style={{ minWidth: 180 }}>{(o.order_items || []).map((it) => `${it.product_name} (${it.quantity_mt} MT)`).join(', ')}</td>
-                      <td className="cell-strong">{formatUSD(o.total_value)}</td>
-                      <td>{o.incoterm}</td>
-                      <td className="cell-muted">{o.shipment_deadline ? new Date(o.shipment_deadline).toLocaleDateString() : '—'}</td>
-                      <td>{o.status}</td>
                       <td>
-                        <button
-                          className="btn btn-secondary"
-                          style={{ fontSize: 11, padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 4 }}
-                          onClick={() => openDocModal(o)}
-                        >
-                          <FileText size={13} />
-                          {(documents[o.id] || []).length > 0
-                            ? `${(documents[o.id] || []).length} doc${(documents[o.id] || []).length > 1 ? 's' : ''}`
-                            : 'Docs'}
-                        </button>
+                        <Badge status={normalizeStatus(order.status)} />
+                        <StageTracker status={order.status} compact />
                       </td>
-                      {isAdminOrDirector && (
-                        <td>
-                          <div style={{ display: 'flex', gap: 4 }}>
-                            <button className="icon-btn" onClick={() => openEdit(o)} title="Edit order">
-                              <Edit2 size={16} />
-                            </button>
-                            <button className="icon-btn" onClick={() => handleDelete(o.id, o.clients?.company)}>
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </td>
-                      )}
+                      <td className="cell-muted product-cell">
+                        {(order.order_items || []).slice(0, 2).map((item) => `${item.product_name} (${item.quantity_mt} MT)`).join(', ') || 'No items yet'}
+                      </td>
+                      <td><strong>{formatUSD(order.total_value)}</strong><div className="cell-muted">{order.incoterm || 'FOB'} · {order.payment_method || 'LC'}</div></td>
+                      <td><span className={`urgency-pill ${urgency.tone}`}>{urgency.label}</span><div className="cell-muted">{order.pod_port || 'POD pending'}</div></td>
+                      <td>
+                        <div className="mini-progress"><span style={{ width: `${docs.percent}%` }} /></div>
+                        <div className="cell-muted">{docs.total ? `${docs.complete}/${docs.total}` : 'Not started'}</div>
+                      </td>
+                      <td>
+                        <div className="row-actions">
+                          <Link className="icon-btn" to={`/orders/${order.id}`} title="Open order"><FileText size={15} /></Link>
+                          <button className="icon-btn" onClick={() => openEdit(order)} title="Edit order"><Edit2 size={15} /></button>
+                          {isAdminOrDirector && <button className="icon-btn danger" onClick={() => handleDelete(order)} title="Delete order"><Trash2 size={15} /></button>}
+                        </div>
+                      </td>
                     </tr>
-                  ))}
-                  {orders.length === 0 && (
-                    <tr><td colSpan={isAdminOrDirector ? 9 : 8}><div className="empty-state"><h4>No orders yet</h4><p>Convert an accepted inquiry into an order to get started.</p></div></td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        </>
-      )}
+        )}
+      </div>
 
-      {/* New Order Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New Order">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Client *
-            <ClientSearchSelect clients={clients} value={form.client_id} onChange={id => setForm(f => ({ ...f, client_id: id }))} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Status
-            <select className="select-input" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
-              {COLUMNS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Incoterm
-            <select className="select-input" value={form.incoterm} onChange={e => setForm(f => ({ ...f, incoterm: e.target.value }))}>
-              {['FOB', 'CIF', 'CFR', 'EXW', 'DDP'].map(i => <option key={i} value={i}>{i}</option>)}
-            </select>
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Payment Method
-            <select className="select-input" value={form.payment_method} onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}>
-              {['LC', 'TT', 'DA', 'DP'].map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-          </label>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button className="btn btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleCreate} disabled={saving || !form.client_id}>
-              {saving ? 'Creating...' : 'Create Order'}
-            </button>
-          </div>
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Create New Export Order">
+        <div className="form-grid">
+          <label className="field-label">Buyer<ClientSearchSelect clients={clients} value={form.client_id} onChange={(id) => setForm({ ...form, client_id: id })} /></label>
+          <label className="field-label">Status<select className="select-input" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>{ORDER_STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}</select></label>
+          <label className="field-label">Incoterm<select className="select-input" value={form.incoterm} onChange={(e) => setForm({ ...form, incoterm: e.target.value })}>{['FOB', 'CFR', 'CIF', 'EXW'].map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label className="field-label">Payment<select className="select-input" value={form.payment_method} onChange={(e) => setForm({ ...form, payment_method: e.target.value })}>{['LC', 'TT', 'CAD', 'DP', 'Advance'].map((item) => <option key={item}>{item}</option>)}</select></label>
         </div>
+        <div className="modal-actions"><button className="btn btn-ghost" onClick={() => setModalOpen(false)}>Cancel</button><button className="btn btn-primary" onClick={handleCreate} disabled={saving}>{saving ? 'Creating...' : 'Create Order'}</button></div>
       </Modal>
 
-      {/* Edit Order Modal */}
-      <Modal open={editModal} onClose={() => setEditModal(false)} title={`Edit Order — ${editOrder?.id}`}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Status
-            <select className="select-input" value={editForm.status || ''} onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}>
-              {COLUMNS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Incoterm
-            <select className="select-input" value={editForm.incoterm || ''} onChange={e => setEditForm(f => ({ ...f, incoterm: e.target.value }))}>
-              {['FOB', 'CIF', 'CFR', 'EXW', 'DDP'].map(i => <option key={i} value={i}>{i}</option>)}
-            </select>
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Payment Method
-            <select className="select-input" value={editForm.payment_method || ''} onChange={e => setEditForm(f => ({ ...f, payment_method: e.target.value }))}>
-              {['LC', 'TT', 'DA', 'DP'].map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Port of Loading
-            <input className="text-input" value={editForm.pol_port || ''} onChange={e => setEditForm(f => ({ ...f, pol_port: e.target.value }))} placeholder="e.g. Port Qasim, Karachi" />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Port of Discharge
-            <input className="text-input" value={editForm.pod_port || ''} onChange={e => setEditForm(f => ({ ...f, pod_port: e.target.value }))} placeholder="e.g. Port Klang, Malaysia" />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Total Value (USD)
-            <input className="text-input" type="number" value={editForm.total_value || ''} onChange={e => setEditForm(f => ({ ...f, total_value: e.target.value }))} placeholder="e.g. 18088" />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Shipment Deadline
-            <input className="text-input" type="date" value={editForm.shipment_deadline || ''} onChange={e => setEditForm(f => ({ ...f, shipment_deadline: e.target.value }))} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Production Progress (%)
-            <input className="text-input" type="number" min="0" max="100" value={editForm.production_progress || 0} onChange={e => setEditForm(f => ({ ...f, production_progress: e.target.value }))} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Special Instructions
-            <textarea className="text-input" rows={3} value={editForm.special_instructions || ''} onChange={e => setEditForm(f => ({ ...f, special_instructions: e.target.value }))} placeholder="e.g. Phytosanitary certificate required." style={{ resize: 'vertical' }} />
-          </label>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button className="btn btn-secondary" onClick={() => setEditModal(false)}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleEdit} disabled={saving}>
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
+      <Modal open={editModal} onClose={() => setEditModal(false)} title={`Update ${selectedOrder?.id || 'Order'}`}>
+        <div className="form-grid">
+          <label className="field-label">Status<select className="select-input" value={editForm.status || ''} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>{ORDER_STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}</select></label>
+          <label className="field-label">Total Value<input className="text-input" type="number" value={editForm.total_value || ''} onChange={(e) => setEditForm({ ...editForm, total_value: e.target.value })} /></label>
+          <label className="field-label">POL<input className="text-input" value={editForm.pol_port || ''} onChange={(e) => setEditForm({ ...editForm, pol_port: e.target.value })} /></label>
+          <label className="field-label">POD<input className="text-input" value={editForm.pod_port || ''} onChange={(e) => setEditForm({ ...editForm, pod_port: e.target.value })} /></label>
+          <label className="field-label">Shipment Deadline<input className="text-input" type="date" value={editForm.shipment_deadline || ''} onChange={(e) => setEditForm({ ...editForm, shipment_deadline: e.target.value })} /></label>
+          <label className="field-label">Production %<input className="text-input" type="number" min="0" max="100" value={editForm.production_progress || 0} onChange={(e) => setEditForm({ ...editForm, production_progress: Number(e.target.value) })} /></label>
+          <label className="field-label full-span">Special Instructions<textarea className="text-input" rows="3" value={editForm.special_instructions || ''} onChange={(e) => setEditForm({ ...editForm, special_instructions: e.target.value })} /></label>
         </div>
-      </Modal>
-
-      {/* Document Modal */}
-      <Modal open={docModal} onClose={() => setDocModal(false)} title={`Documents — ${docOrder?.id}`}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-          {/* Existing documents */}
-          {(documents[docOrder?.id] || []).length > 0 && (
-            <div style={{ marginBottom: 8 }}>
-              <div className="section-label" style={{ marginBottom: 6 }}>Uploaded Documents</div>
-              {(documents[docOrder?.id] || []).map((doc, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '0.5px solid var(--color-border)' }}>
-                  <FileText size={14} color="var(--color-primary)" />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{doc.doc_name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--color-ink-soft)' }}>{doc.doc_type}{doc.doc_notes ? ` · ${doc.doc_notes}` : ''}</div>
-                  </div>
-                  {doc.doc_url && (
-                    <a href={doc.doc_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: 'var(--color-primary)' }}>View</a>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Upload form */}
-          <div className="section-label">Upload New Document</div>
-
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Document Type
-            <select className="select-input" value={docForm.doc_type} onChange={e => setDocForm(f => ({ ...f, doc_type: e.target.value }))}>
-              {DOCUMENT_TYPES.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </label>
-
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Document Name (optional)
-            <input className="text-input" value={docForm.doc_name} onChange={e => setDocForm(f => ({ ...f, doc_name: e.target.value }))} placeholder="e.g. Proforma Invoice KTC/EXP/001" />
-          </label>
-
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Notes (optional)
-            <input className="text-input" value={docForm.doc_notes} onChange={e => setDocForm(f => ({ ...f, doc_notes: e.target.value }))} placeholder="e.g. Signed and stamped" />
-          </label>
-
-          {/* File upload area */}
-          <div
-            style={{
-              border: '2px dashed var(--color-border)',
-              borderRadius: 8,
-              padding: '20px',
-              textAlign: 'center',
-              cursor: 'pointer',
-              background: 'var(--surface-1)',
-            }}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload size={24} style={{ marginBottom: 8, color: 'var(--color-primary)' }} />
-            <div style={{ fontSize: 13, fontWeight: 600 }}>Click to upload PDF or image</div>
-            <div style={{ fontSize: 11, color: 'var(--color-ink-soft)', marginTop: 4 }}>PDF, JPG, PNG, Word — max 10MB</div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-              style={{ display: 'none' }}
-              onChange={handleFileUpload}
-              disabled={docSaving}
-            />
-          </div>
-
-          {uploadProgress && (
-            <div style={{ fontSize: 12, color: uploadProgress.includes('✅') ? 'green' : 'var(--color-ink-soft)', textAlign: 'center' }}>
-              {uploadProgress}
-            </div>
-          )}
-
-          {docSaving && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
-              <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-              <span style={{ fontSize: 13 }}>Uploading...</span>
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button className="btn btn-secondary" onClick={() => setDocModal(false)}>Close</button>
-          </div>
-        </div>
+        <div className="modal-actions"><button className="btn btn-ghost" onClick={() => setEditModal(false)}>Cancel</button><button className="btn btn-primary" onClick={handleEdit} disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</button></div>
       </Modal>
     </div>
   );

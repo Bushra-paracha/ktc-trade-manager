@@ -1,152 +1,127 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, Download, Loader2, AlertCircle, X } from 'lucide-react';
+import { AlertCircle, Download, FileCheck2, FileText, Loader2, Search, ShieldCheck, X } from 'lucide-react';
 import Badge from '../components/Badge';
-import { SearchInput, SelectInput } from '../components/Toolbar';
 import { supabase } from '../lib/supabaseClient';
-import { useDocumentUpload } from '../hooks/useDocumentUpload';
+
+const DOC_FILTERS = ['All', 'Pending', 'In Progress', 'Uploaded', 'Verified', 'Sent to Buyer'];
 
 export default function Documents() {
-  const [docs, setDocs] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [search, setSearch] = useState('');
-  const [type, setType] = useState('');
-  const { getSignedUrl, removeDocument } = useDocumentUpload();
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
 
-  async function fetchDocs() {
+  async function load() {
     setLoading(true);
     setError(null);
     const { data, error } = await supabase
       .from('order_documents')
-      .select('*, orders(id, clients(company))')
+      .select('*, orders(id, clients(company, country))')
       .order('updated_at', { ascending: false });
-
     if (error) setError(error.message);
-    else setDocs(data || []);
+    else setDocuments(data || []);
     setLoading(false);
   }
 
-  useEffect(() => {
-    fetchDocs();
-  }, []);
+  useEffect(() => { load(); }, []);
 
-  const uploadedDocs = docs.filter((d) => d.file_path);
-  const types = [...new Set(uploadedDocs.map((d) => d.document_type))];
+  const filtered = useMemo(() => {
+    const text = query.trim().toLowerCase();
+    return documents.filter((doc) => {
+      const searchable = [
+        doc.document_type,
+        doc.file_name,
+        doc.status,
+        doc.responsible_party,
+        doc.orders?.id,
+        doc.orders?.clients?.company,
+        doc.orders?.clients?.country,
+      ].filter(Boolean).join(' ').toLowerCase();
+      return (!text || searchable.includes(text)) && (statusFilter === 'All' || doc.status === statusFilter);
+    });
+  }, [documents, query, statusFilter]);
 
-  const filtered = uploadedDocs.filter((d) => {
-    const company = d.orders?.clients?.company || '';
-    const matchesSearch =
-      (d.file_name || '').toLowerCase().includes(search.toLowerCase()) ||
-      company.toLowerCase().includes(search.toLowerCase());
-    const matchesType = !type || d.document_type === type;
-    return matchesSearch && matchesType;
-  });
+  const uploaded = documents.filter((d) => ['Uploaded', 'Verified', 'Sent to Buyer'].includes(d.status)).length;
+  const verified = documents.filter((d) => ['Verified', 'Sent to Buyer'].includes(d.status)).length;
+  const pending = documents.filter((d) => ['Pending', 'In Progress'].includes(d.status)).length;
 
-  async function handleView(path) {
-    const { url, error } = await getSignedUrl(path);
-    if (error) {
-      alert(`Couldn't open file: ${error}`);
-      return;
-    }
-    window.open(url, '_blank');
+  function handleView(filePath) {
+    if (!filePath) return alert('No file uploaded yet.');
+    const { data } = supabase.storage.from('order-documents').getPublicUrl(filePath);
+    if (data?.publicUrl) window.open(data.publicUrl, '_blank');
+    else alert('Could not open this document.');
   }
 
-  async function handleRemove(docId, path) {
-    if (!window.confirm('Remove this uploaded file? It will be cleared from the checklist too.')) return;
-    await removeDocument(docId, path);
-    fetchDocs();
+  async function handleRemove(docId, filePath) {
+    if (!window.confirm('Remove this file from the checklist?')) return;
+    if (filePath) await supabase.storage.from('order-documents').remove([filePath]);
+    await supabase.from('order_documents').update({ file_path: null, file_name: null, status: 'Pending', updated_at: new Date().toISOString() }).eq('id', docId);
+    load();
   }
 
   return (
-    <div>
-      <div className="page-header">
+    <div className="documents-workspace">
+      <div className="page-header elevated-header">
         <div>
-          <h1>Document Library</h1>
-          <p>{uploadedDocs.length} uploaded documents across all orders</p>
+          <span className="eyebrow">Compliance</span>
+          <h1>Documents</h1>
+          <p>Central export document control for PI, BL, CO, SGS, fumigation and phytosanitary files.</p>
         </div>
       </div>
 
-      {error && (
-        <div className="card" style={{ marginBottom: 16, background: 'var(--color-danger-soft)', border: '1px solid var(--color-danger)' }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <AlertCircle size={18} color="var(--color-danger)" />
-            <div>
-              <strong style={{ color: 'var(--color-danger)' }}>Couldn't load documents</strong>
-              <p style={{ margin: '4px 0 0', fontSize: 13 }}>{error}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="toolbar">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search by file name or client..." />
-        <SelectInput value={type} onChange={setType} options={types} label="All Types" />
+      <div className="order-health-grid">
+        <DocMetric icon={FileText} label="Checklist Items" value={documents.length} helper="Across all orders" />
+        <DocMetric icon={Download} label="Uploaded" value={uploaded} helper="Files attached" />
+        <DocMetric icon={ShieldCheck} label="Verified" value={verified} helper="Ready for buyer/shipment" />
+        <DocMetric icon={FileCheck2} label="Pending" value={pending} helper="Needs action" />
       </div>
 
-      {loading ? (
-        <div className="card" style={{ textAlign: 'center', padding: 48 }}>
-          <Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} />
-          <p style={{ marginTop: 12, color: 'var(--color-ink-soft)' }}>Loading documents...</p>
+      {error && <div className="card danger-alert"><AlertCircle size={18} /><div><strong>Couldn't load documents</strong><p>{error}</p></div></div>}
+
+      <div className="card order-control-card">
+        <div className="orders-toolbar">
+          <div className="search-box wide-search"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search document, buyer, order, country or responsible party..." /></div>
+          <select className="select-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>{DOC_FILTERS.map((status) => <option key={status}>{status}</option>)}</select>
         </div>
-      ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Document</th>
-                <th>Type</th>
-                <th>Client</th>
-                <th>Linked Order</th>
-                <th>Uploaded</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((d) => (
-                <tr key={d.id}>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div className="timeline-icon" style={{ background: 'var(--color-primary-soft)', color: 'var(--color-primary)' }}>
-                        <FileText />
-                      </div>
-                      <span className="cell-strong">{d.file_name}</span>
-                    </div>
-                  </td>
-                  <td>{d.document_type}</td>
-                  <td>{d.orders?.clients?.company || '—'}</td>
-                  <td>
-                    <Link to={`/orders/${d.orders?.id}`} style={{ color: 'var(--color-primary)' }}>{d.orders?.id}</Link>
-                  </td>
-                  <td className="cell-muted">{d.updated_at ? new Date(d.updated_at).toLocaleDateString() : '—'}</td>
-                  <td><Badge status={d.status} /></td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="icon-btn" aria-label="Download" onClick={() => handleView(d.file_path)}>
-                        <Download size={16} />
-                      </button>
-                      <button className="icon-btn" aria-label="Remove" onClick={() => handleRemove(d.id, d.file_path)}>
-                        <X size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
+
+        {loading ? (
+          <div className="empty-state"><Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} /><h4>Loading documents...</h4></div>
+        ) : (
+          <div className="orders-table-wrap">
+            <table className="data-table documents-table">
+              <thead>
                 <tr>
-                  <td colSpan={7}>
-                    <div className="empty-state">
-                      <h4>No documents uploaded yet</h4>
-                      <p>Upload files from an order's document checklist — they'll show up here.</p>
-                    </div>
-                  </td>
+                  <th>Document</th>
+                  <th>Order</th>
+                  <th>Buyer</th>
+                  <th>Status</th>
+                  <th>Updated</th>
+                  <th>Actions</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {filtered.map((doc) => (
+                  <tr key={doc.id}>
+                    <td><div className="doc-name-cell"><div className="doc-icon"><FileText size={16} /></div><div><strong>{doc.document_type}</strong><span>{doc.file_name || doc.responsible_party || 'No file uploaded'}</span></div></div></td>
+                    <td>{doc.orders?.id ? <Link className="order-title-link" to={`/orders/${doc.orders.id}`}>{doc.orders.id}</Link> : '—'}</td>
+                    <td><strong>{doc.orders?.clients?.company || '—'}</strong><div className="cell-muted">{doc.orders?.clients?.country || '—'}</div></td>
+                    <td><Badge status={doc.status} /></td>
+                    <td className="cell-muted">{doc.updated_at ? new Date(doc.updated_at).toLocaleDateString() : '—'}</td>
+                    <td><div className="row-actions"><button className="icon-btn" onClick={() => handleView(doc.file_path)}><Download size={15} /></button><button className="icon-btn danger" onClick={() => handleRemove(doc.id, doc.file_path)}><X size={15} /></button></div></td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && <tr><td colSpan={6}><div className="empty-state"><FileText /><h4>No documents found</h4><p>Upload files from an order page. They will appear here automatically.</p></div></td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
+}
+
+function DocMetric({ icon: Icon, label, value, helper }) {
+  return <div className="trade-stat-card"><Icon size={18} /><div><span>{label}</span><strong>{value}</strong><small>{helper}</small></div></div>;
 }

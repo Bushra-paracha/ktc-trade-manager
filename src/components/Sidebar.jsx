@@ -74,7 +74,7 @@ export default function Sidebar() {
           <LogOut size={16} />
         </button>
       </div>
-      <div className="sidebar-footer">Sprint 1 UI · CRM v1.1</div>
+      <div className="sidebar-footer">Sprint 2 Buyers · CRM v1.2</div>
     </aside>
   );
 }

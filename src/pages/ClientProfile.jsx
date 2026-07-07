@@ -1,22 +1,73 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Mail, Phone, MapPin, Tag, TrendingUp, Send, Paperclip, Check, CheckCheck, Loader2 } from 'lucide-react';
-import { emailThreads, orders, documents, formatUSD } from '../data/mockData';
-import { useInquiries } from '../hooks/useInquiries';
-import { useClient } from '../hooks/useClients';
+import { useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Copy,
+  FileText,
+  Loader2,
+  Mail,
+  MapPin,
+  MessageCircle,
+  PackageCheck,
+  Phone,
+  Send,
+  Tag,
+  TrendingUp,
+} from 'lucide-react';
 import Badge from '../components/Badge';
+import { documents, emailThreads, formatUSD, orders } from '../data/mockData';
+import BuyerProfileTimeline from '../components/buyers/BuyerProfileTimeline';
+import LeadScoreBadge from '../components/buyers/LeadScoreBadge';
+import { useClient } from '../hooks/useClients';
+import { useInquiries } from '../hooks/useInquiries';
+
+function productsText(value) {
+  if (Array.isArray(value)) return value.join(', ');
+  return value || 'Products not set';
+}
+
+function safeDate(value) {
+  if (!value) return '—';
+  return new Date(value).toLocaleDateString();
+}
+
+function copyText(value) {
+  if (!value) return;
+  navigator.clipboard?.writeText(value);
+}
+
+function buildEmailDraft(client) {
+  const products = productsText(client.products_interest);
+  return `Dear ${client.contact || 'Team'},\n\nThank you for your interest in Kassam Trading Company. We can offer direct mill pricing for ${products}. Please share your required quantity, destination port and preferred packing so we can prepare a formal quotation.\n\nBest regards,\nKassam Trading Company`;
+}
+
+function buildWhatsAppDraft(client) {
+  return `Hello ${client.contact || ''}, this is Kassam Trading Company from Karachi, Pakistan. We are following up regarding ${productsText(client.products_interest)}. Please share your required quantity and destination port so we can quote FOB/CNF pricing.`;
+}
 
 export default function ClientProfile() {
   const { id } = useParams();
   const { client, loading, error } = useClient(id);
   const { inquiries } = useInquiries();
   const [tab, setTab] = useState('overview');
+  const [copied, setCopied] = useState('');
+
+  const related = useMemo(() => {
+    if (!client) return { threads: [], clientOrders: [], clientInquiries: [], clientDocs: [] };
+    return {
+      threads: emailThreads.filter((thread) => thread.clientId === client.id),
+      clientOrders: orders.filter((order) => order.clientId === client.id),
+      clientInquiries: inquiries.filter((inquiry) => inquiry.client_id === client.id),
+      clientDocs: documents.filter((doc) => doc.client === client.company),
+    };
+  }, [client, inquiries]);
 
   if (loading) {
     return (
-      <div className="card" style={{ textAlign: 'center', padding: 48 }}>
+      <div className="card dashboard-loading">
         <Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} />
-        <p style={{ marginTop: 12, color: 'var(--color-ink-soft)' }}>Loading client...</p>
+        <p>Loading buyer profile...</p>
       </div>
     );
   }
@@ -24,260 +75,238 @@ export default function ClientProfile() {
   if (error || !client) {
     return (
       <div className="empty-state">
-        <h4>Client not found</h4>
-        <p><Link to="/clients">Back to Clients</Link></p>
+        <h4>Buyer not found</h4>
+        <p><Link to="/clients">Back to Buyers</Link></p>
       </div>
     );
   }
 
-  // NOTE: Email threads, orders, and documents still come from mock data
-  // until those tables are migrated to Supabase. They're matched by company name
-  // and client id for now.
-  const threads = emailThreads.filter((t) => t.clientId === client.id);
-  const clientOrders = orders.filter((o) => o.clientId === client.id);
-  const clientInquiries = inquiries.filter((i) => i.client_id === client.id);
-  const clientDocs = documents.filter((d) => d.client === client.company);
+  const { threads, clientOrders, clientInquiries, clientDocs } = related;
+  const emailDraft = buildEmailDraft(client);
+  const whatsAppDraft = buildWhatsAppDraft(client);
+
+  function handleCopy(label, value) {
+    copyText(value);
+    setCopied(label);
+    window.setTimeout(() => setCopied(''), 1800);
+  }
+
+  const tabs = [
+    ['overview', 'Overview'],
+    ['timeline', 'Timeline'],
+    ['inquiries', `Inquiries${clientInquiries.length ? ` (${clientInquiries.length})` : ''}`],
+    ['orders', `Orders${clientOrders.length ? ` (${clientOrders.length})` : ''}`],
+    ['documents', `Documents${clientDocs.length ? ` (${clientDocs.length})` : ''}`],
+    ['emails', `Emails${threads.length ? ` (${threads.length})` : ''}`],
+  ];
 
   return (
-    <div>
+    <div className="buyer-profile-page">
       <Link to="/clients" className="btn btn-ghost btn-sm" style={{ marginBottom: 12 }}>
-        <ArrowLeft /> Back to Clients
+        <ArrowLeft /> Back to Buyers
       </Link>
 
-      <div className="page-header">
-        <div>
-          <h1>{client.company}</h1>
-          <p>{client.id} · Source: {client.source} · Assigned to {client.assigned_to}</p>
+      <section className="buyer-profile-hero">
+        <div className="buyer-profile-main">
+          <div className="buyer-profile-avatar">{(client.company || 'B').slice(0, 2).toUpperCase()}</div>
+          <div>
+            <div className="dashboard-eyebrow"><TrendingUp size={16} /> Buyer Profile</div>
+            <h1>{client.company}</h1>
+            <p>{client.country || 'Unknown country'} · {client.source || 'Unknown source'} · Added {safeDate(client.created_at)}</p>
+            <div className="buyer-profile-badges">
+              <Badge status={client.status || 'New'} />
+              <LeadScoreBadge score={client.score} />
+              <span className="buyer-segment-pill">{productsText(client.products_interest)}</span>
+            </div>
+          </div>
         </div>
-        <Badge status={client.status} />
-      </div>
+        <div className="buyer-profile-actions">
+          <a className="btn btn-secondary" href={client.email ? `mailto:${client.email}` : undefined} aria-disabled={!client.email}><Mail /> Email</a>
+          <a className="btn btn-secondary" href={client.phone ? `https://wa.me/${String(client.phone).replace(/\D/g, '')}` : undefined} target="_blank" rel="noreferrer" aria-disabled={!client.phone}><MessageCircle /> WhatsApp</a>
+          <Link className="btn btn-primary" to="/inquiries"><Send /> New Quote</Link>
+        </div>
+      </section>
 
-      <div className="grid grid-4" style={{ marginBottom: 20 }}>
-        <div className="stat-card">
-          <div className="stat-card-label">Lead Score</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
-            <div className="stat-card-value" style={{ margin: 0 }}>{client.score}/100</div>
-            <span style={{
-              fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-              background: client.score >= 80 ? '#FDE8E6' : client.score >= 60 ? '#FDF6E3' : client.score >= 40 ? '#E6F0F7' : '#F0F0F0',
-              color: client.score >= 80 ? '#B5402E' : client.score >= 60 ? '#C49A2B' : client.score >= 40 ? '#2C6E8F' : '#888888',
-            }}>
-              {client.score >= 80 ? '🔥 HOT' : client.score >= 60 ? '🌤 WARM' : client.score >= 40 ? '🌊 LUKEWARM' : '❄️ COLD'}
-            </span>
-          </div>
-          <div className="progress-track" style={{ width: '100%', marginTop: 8 }}>
-            <div className="progress-fill" style={{
-              width: `${client.score}%`,
-              background: client.score >= 80 ? '#B5402E' : client.score >= 60 ? '#C49A2B' : client.score >= 40 ? 'var(--color-accent)' : 'var(--color-ink-faint)'
-            }} />
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-label">Total Revenue</div>
-          <div className="stat-card-value">{formatUSD(client.revenue || 0)}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-label">Orders Placed</div>
-          <div className="stat-card-value">{client.orders}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-label">Est. Monthly Volume</div>
-          <div className="stat-card-value" style={{ fontSize: 18 }}>{client.est_volume}</div>
-        </div>
+      <div className="buyer-profile-metrics">
+        <Metric label="Lead Score" value={`${client.score || 0}/100`} note="Priority for follow-up" />
+        <Metric label="Revenue" value={formatUSD(client.revenue || 0)} note="Confirmed CRM revenue" />
+        <Metric label="Orders" value={client.orders || clientOrders.length || 0} note="Orders linked to buyer" />
+        <Metric label="Est. Volume" value={client.est_volume || '—'} note="Expected monthly demand" />
       </div>
 
       <div className="tabs">
-        {['overview', 'emails', 'orders', 'documents'].map((t) => (
-          <div key={t} className={'tab' + (tab === t ? ' active' : '')} onClick={() => setTab(t)} role="button">
-            {t.charAt(0).toUpperCase() + t.slice(1)}
-            {t === 'emails' && threads.length > 0 ? ` (${threads.length})` : ''}
-            {t === 'orders' && clientOrders.length > 0 ? ` (${clientOrders.length})` : ''}
-            {t === 'documents' && clientDocs.length > 0 ? ` (${clientDocs.length})` : ''}
-          </div>
+        {tabs.map(([key, label]) => (
+          <button key={key} className={`tab ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)} type="button">
+            {label}
+          </button>
         ))}
       </div>
 
       {tab === 'overview' && (
-        <div className="split-layout">
-          <div className="card">
-            <div className="card-header"><h3>Contact Information</h3></div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <Row icon={Mail} label="Email" value={client.email} />
-              <Row icon={Phone} label="Phone / WhatsApp" value={client.phone} />
-              <Row icon={MapPin} label="Location" value={`${client.city}, ${client.country}`} />
-              <Row icon={Tag} label="Products of Interest" value={(client.products_interest || []).join(', ')} />
-              <Row icon={TrendingUp} label="Last Activity" value={client.last_activity ? new Date(client.last_activity).toLocaleString() : '—'} />
+        <div className="buyer-profile-layout">
+          <main className="buyer-profile-stack">
+            <div className="card">
+              <div className="card-header"><h3>Contact Details</h3></div>
+              <div className="buyer-detail-grid">
+                <Detail icon={Mail} label="Email" value={client.email || 'No email saved'} onCopy={() => handleCopy('email', client.email)} />
+                <Detail icon={Phone} label="Phone / WhatsApp" value={client.phone || 'No phone saved'} onCopy={() => handleCopy('phone', client.phone)} />
+                <Detail icon={MapPin} label="Location" value={[client.city, client.country].filter(Boolean).join(', ') || 'Location not saved'} />
+                <Detail icon={Tag} label="Products" value={productsText(client.products_interest)} />
+              </div>
+              {copied && <div className="buyer-inline-note">Copied {copied} to clipboard.</div>}
             </div>
-          </div>
-          <div className="card">
-            <div className="card-header"><h3>Open Inquiries</h3></div>
-            {clientInquiries.length === 0 && (
-              <div className="empty-state">
-                <h4>No open inquiries</h4>
-                <p>This client has no active price requests.</p>
-              </div>
-            )}
-            {clientInquiries.map((inq) => (
-              <div className="timeline-item" key={inq.id}>
-                <div className="timeline-body" style={{ flex: 1 }}>
-                  <strong>{inq.id}</strong>
-                  <p>{(inq.inquiry_items || []).map((it) => it.product_name).join(', ')}</p>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <Badge status={inq.status} />
-                  <div className="cell-muted" style={{ marginTop: 4 }}>{formatUSD(inq.total_value)}</div>
+
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <h3>Buyer Notes</h3>
+                  <div className="card-header-sub">Use this to understand context before sending a message.</div>
                 </div>
               </div>
-            ))}
-          </div>
+              <p className="buyer-profile-notes">{client.notes || 'No internal notes yet. Add notes from the buyer list edit form.'}</p>
+            </div>
+          </main>
+
+          <aside className="buyer-profile-stack">
+            <div className="card buyer-next-card">
+              <div className="card-header"><h3>Next Best Actions</h3></div>
+              <div className="buyer-action-list">
+                <NextAction title="Send price follow-up" note="Confirm quantity, packing and destination port." />
+                <NextAction title="Prepare quote" note={`Use current products: ${productsText(client.products_interest)}`} />
+                <NextAction title="Update lead score" note="Increase score if the buyer replies or requests a PI." />
+              </div>
+            </div>
+
+            <div className="card buyer-next-card">
+              <div className="card-header"><h3>Quick Message Drafts</h3></div>
+              <button className="buyer-draft" onClick={() => handleCopy('email draft', emailDraft)}><Mail size={16} /> Copy email follow-up</button>
+              <button className="buyer-draft" onClick={() => handleCopy('WhatsApp draft', whatsAppDraft)}><MessageCircle size={16} /> Copy WhatsApp follow-up</button>
+            </div>
+          </aside>
         </div>
       )}
 
-      {tab === 'emails' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {threads.length === 0 && (
-            <div className="card">
-              <div className="empty-state">
-                <Mail />
-                <h4>No email history yet</h4>
-                <p>Outreach emails sent to this client will appear here.</p>
-              </div>
-            </div>
-          )}
-          {threads.map((thread) => (
-            <div className="card" key={thread.id}>
-              <div className="card-header">
-                <div>
-                  <h3>{thread.subject}</h3>
-                  <div className="card-header-sub">{thread.messages.length} messages</div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {thread.messages.map((m, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 'var(--radius-md)',
-                      padding: 12,
-                      background: m.from === 'KTC' ? 'var(--color-primary-soft)' : 'var(--color-surface-alt)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-                      <strong style={{ fontSize: 13 }}>{m.from} → {m.to}</strong>
-                      <span className="cell-muted">{m.date}</span>
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 600, margin: '6px 0 2px' }}>{m.subject}</div>
-                    <p style={{ margin: 0, fontSize: 12.5, color: 'var(--color-ink-soft)' }}>{m.body}</p>
-                    {m.from === 'KTC' && (
-                      <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-                        <span className="cell-muted" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          {m.opened ? <CheckCheck size={13} color="var(--color-success)" /> : <Check size={13} />}
-                          {m.opened ? 'Opened' : 'Sent'}
-                        </span>
-                        {m.clicked && (
-                          <span className="cell-muted" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <Paperclip size={13} /> Link clicked
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
-                <input
-                  className="select-input"
-                  style={{ flex: 1 }}
-                  placeholder="Write a reply..."
-                  disabled
-                />
-                <button className="btn btn-primary btn-sm" disabled>
-                  <Send /> Send
-                </button>
-              </div>
-            </div>
-          ))}
+      {tab === 'timeline' && (
+        <div className="card">
+          <div className="card-header"><h3>Buyer Timeline</h3></div>
+          <BuyerProfileTimeline client={client} inquiries={clientInquiries} orders={clientOrders} emails={threads} />
         </div>
+      )}
+
+      {tab === 'inquiries' && (
+        <TableState count={clientInquiries.length} emptyTitle="No inquiries yet" emptyText="Price requests and public quote submissions will appear here.">
+          <table>
+            <thead><tr><th>Inquiry</th><th>Products</th><th>Value</th><th>Status</th></tr></thead>
+            <tbody>
+              {clientInquiries.map((inq) => (
+                <tr key={inq.id}>
+                  <td className="cell-strong">{inq.id}</td>
+                  <td>{(inq.inquiry_items || []).map((item) => item.product_name).join(', ') || '—'}</td>
+                  <td>{formatUSD(inq.total_value || 0)}</td>
+                  <td><Badge status={inq.status || 'Open'} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableState>
       )}
 
       {tab === 'orders' && (
-        <div className="table-wrap">
+        <TableState count={clientOrders.length} emptyTitle="No orders yet" emptyText="Confirmed orders for this buyer will appear here.">
           <table>
-            <thead>
-              <tr>
-                <th>Order ID</th>
-                <th>Products</th>
-                <th>Value</th>
-                <th>Incoterm</th>
-                <th>Status</th>
-                <th>Deadline</th>
-              </tr>
-            </thead>
+            <thead><tr><th>Order</th><th>Products</th><th>Value</th><th>Incoterm</th><th>Status</th><th>Deadline</th></tr></thead>
             <tbody>
-              {clientOrders.map((o) => (
-                <tr key={o.id}>
-                  <td>
-                    <Link to={`/orders/${o.id}`} className="cell-strong" style={{ color: 'var(--color-primary)' }}>{o.id}</Link>
-                  </td>
-                  <td>{o.products.join(', ')}</td>
-                  <td className="cell-strong">{formatUSD(o.value)}</td>
-                  <td>{o.incoterm}</td>
-                  <td><Badge status={o.status} /></td>
-                  <td>{o.deadline}</td>
+              {clientOrders.map((order) => (
+                <tr key={order.id}>
+                  <td><Link to={`/orders/${order.id}`} className="cell-strong" style={{ color: 'var(--color-primary)' }}>{order.id}</Link></td>
+                  <td>{Array.isArray(order.products) ? order.products.join(', ') : '—'}</td>
+                  <td>{formatUSD(order.value || 0)}</td>
+                  <td>{order.incoterm || '—'}</td>
+                  <td><Badge status={order.status || 'Open'} /></td>
+                  <td>{order.deadline || '—'}</td>
                 </tr>
               ))}
-              {clientOrders.length === 0 && (
-                <tr><td colSpan={6}><div className="empty-state"><h4>No orders yet</h4><p>Orders placed by this client will appear here.</p></div></td></tr>
-              )}
             </tbody>
           </table>
-        </div>
+        </TableState>
       )}
 
       {tab === 'documents' && (
-        <div className="table-wrap">
+        <TableState count={clientDocs.length} emptyTitle="No documents yet" emptyText="PI, invoice, SGS and shipping documents will appear here.">
           <table>
-            <thead>
-              <tr>
-                <th>Document</th>
-                <th>Type</th>
-                <th>Linked To</th>
-                <th>Date</th>
-                <th>Status</th>
-              </tr>
-            </thead>
+            <thead><tr><th>Document</th><th>Type</th><th>Linked To</th><th>Date</th><th>Status</th></tr></thead>
             <tbody>
-              {clientDocs.map((d) => (
-                <tr key={d.id}>
-                  <td className="cell-strong">{d.name}</td>
-                  <td>{d.type}</td>
-                  <td>{d.linkedTo}</td>
-                  <td>{d.date}</td>
-                  <td><Badge status={d.status} /></td>
+              {clientDocs.map((doc) => (
+                <tr key={doc.id}>
+                  <td className="cell-strong">{doc.name}</td>
+                  <td>{doc.type}</td>
+                  <td>{doc.linkedTo}</td>
+                  <td>{doc.date}</td>
+                  <td><Badge status={doc.status} /></td>
                 </tr>
               ))}
-              {clientDocs.length === 0 && (
-                <tr><td colSpan={5}><div className="empty-state"><h4>No documents yet</h4><p>Generated and uploaded documents will appear here.</p></div></td></tr>
-              )}
             </tbody>
           </table>
+        </TableState>
+      )}
+
+      {tab === 'emails' && (
+        <div className="buyer-profile-stack">
+          {threads.length === 0 && <div className="card"><div className="empty-state"><Mail /><h4>No email history yet</h4><p>Outreach emails sent to this buyer will appear here.</p></div></div>}
+          {threads.map((thread) => (
+            <div className="card" key={thread.id}>
+              <div className="card-header"><h3>{thread.subject}</h3><div className="card-header-sub">{thread.messages?.length || 0} messages</div></div>
+              <div className="buyer-email-thread">
+                {(thread.messages || []).map((message, index) => (
+                  <div className="buyer-email-message" key={index}>
+                    <div><strong>{message.from} → {message.to}</strong><span>{message.date}</span></div>
+                    <p>{message.body}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function Row({ icon: Icon, label, value }) {
+function Metric({ label, value, note }) {
   return (
-    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-      <div className="timeline-icon" style={{ background: 'var(--color-surface-alt)', color: 'var(--color-ink-soft)' }}>
-        <Icon />
-      </div>
-      <div>
-        <div className="cell-muted">{label}</div>
-        <div className="cell-strong">{value}</div>
-      </div>
+    <div className="buyer-profile-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <p>{note}</p>
     </div>
   );
+}
+
+function Detail({ icon: Icon, label, value, onCopy }) {
+  return (
+    <div className="buyer-detail-item">
+      <div className="buyer-detail-icon"><Icon size={17} /></div>
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+      {onCopy && <button type="button" onClick={onCopy} title="Copy"><Copy size={15} /></button>}
+    </div>
+  );
+}
+
+function NextAction({ title, note }) {
+  return (
+    <div className="buyer-action-item">
+      <div className="buyer-action-icon"><CheckCircle2 size={17} /></div>
+      <div><strong>{title}</strong><span>{note}</span></div>
+    </div>
+  );
+}
+
+function TableState({ children, count, emptyTitle, emptyText }) {
+  if (!count) {
+    return <div className="card"><div className="empty-state"><FileText /><h4>{emptyTitle}</h4><p>{emptyText}</p></div></div>;
+  }
+  return <div className="table-wrap">{children}</div>;
 }

@@ -12,6 +12,7 @@ import {
   ShoppingCart,
   Sparkles,
   Users,
+  Target,
   X,
 } from 'lucide-react';
 import { useClients } from '../hooks/useClients';
@@ -21,9 +22,11 @@ import { supabase } from '../lib/supabaseClient';
 
 const QUICK_ACTIONS = [
   { label: 'Add buyer', description: 'Create or import a new international buyer', to: '/clients', icon: Users },
+  { label: 'Create quote / PI', description: 'Generate export quotation and WhatsApp text', to: '/quotes', icon: FileText },
   { label: 'Create order', description: 'Start an export order workflow', to: '/orders', icon: ClipboardList },
+  { label: 'Lead scoring', description: 'Prioritize hot buyers by market and intent', to: '/lead-scoring', icon: Target },
   { label: 'Follow-up tasks', description: 'Open today’s buyer action queue', to: '/tasks', icon: CheckSquare },
-  { label: 'Amazon salt packs', description: 'Plan 1 lb, 2 lb and 5 lb retail packs', to: '/amazon', icon: ShoppingCart },
+  { label: 'Amazon salt setup', description: 'Launch 1 lb, 2 lb and 5 lb retail packs', to: '/amazon-setup', icon: ShoppingCart },
 ];
 
 function normalize(value) {

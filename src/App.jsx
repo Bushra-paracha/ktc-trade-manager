@@ -27,6 +27,11 @@ import Products from './pages/Products';
 import Amazon from './pages/Amazon';
 import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
+import QuotationGenerator from './pages/QuotationGenerator';
+import Templates from './pages/Templates';
+import LeadScoring from './pages/LeadScoring';
+import WebsiteGrowth from './pages/WebsiteGrowth';
+import AmazonSetup from './pages/AmazonSetup';
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -73,6 +78,11 @@ export default function App() {
                     <Route path="/products" element={<Products />} />
                     <Route path="/amazon" element={<Amazon />} />
                     <Route path="/analytics" element={<Analytics />} />
+                    <Route path="/quotes" element={<QuotationGenerator />} />
+                    <Route path="/templates" element={<Templates />} />
+                    <Route path="/lead-scoring" element={<LeadScoring />} />
+                    <Route path="/website-growth" element={<WebsiteGrowth />} />
+                    <Route path="/amazon-setup" element={<AmazonSetup />} />
                     <Route path="/settings" element={<Settings />} />
                   </Routes>
                 </div>

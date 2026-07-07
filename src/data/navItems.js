@@ -16,24 +16,31 @@ import {
   Globe,
   Shield,
   KanbanSquare,
+  FileText,
+  MessageSquareText,
+  Target,
+  TrendingUp,
 } from 'lucide-react';
 
 export const navGroups = [
-  {
-    label: 'Home',
-    items: [
-      { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-    ],
-  },
+  { label: 'Home', items: [{ to: '/', label: 'Dashboard', icon: LayoutDashboard }] },
   {
     label: 'Buyers',
     items: [
       { to: '/clients', label: 'Buyer CRM', icon: Users },
+      { to: '/lead-scoring', label: 'Lead Scoring', icon: Target },
       { to: '/pipeline', label: 'Pipeline', icon: KanbanSquare },
       { to: '/inquiries', label: 'Inquiries', icon: FileQuestion },
       { to: '/inbox', label: 'Quote Inbox', icon: Inbox },
       { to: '/inbound', label: 'Email Inbox', icon: Mail },
       { to: '/outreach', label: 'Outreach', icon: Mail },
+    ],
+  },
+  {
+    label: 'Sales Tools',
+    items: [
+      { to: '/quotes', label: 'Quote / PI Generator', icon: FileText },
+      { to: '/templates', label: 'Email Templates', icon: MessageSquareText },
     ],
   },
   {
@@ -49,6 +56,14 @@ export const navGroups = [
     items: [
       { to: '/products', label: 'Product Catalog', icon: Package },
       { to: '/amazon', label: 'Amazon Packs', icon: ShoppingCart },
+      { to: '/amazon-setup', label: 'Amazon Setup', icon: ShoppingCart },
+    ],
+  },
+  {
+    label: 'Growth',
+    items: [
+      { to: '/website-growth', label: 'Website Growth', icon: TrendingUp },
+      { to: '/analytics', label: 'Reports', icon: BarChart3 },
     ],
   },
   {
@@ -58,21 +73,15 @@ export const navGroups = [
       { to: '/suppliers', label: 'Suppliers', icon: Truck },
       { to: '/reexport', label: 'Re-export Traders', icon: Globe },
       { to: '/policies', label: 'Policies & SLAs', icon: Shield },
-    ],
-  },
-  {
-    label: 'Insights',
-    items: [
-      { to: '/analytics', label: 'Reports', icon: BarChart3 },
       { to: '/settings', label: 'Settings', icon: Settings },
     ],
   },
 ];
 
-// Flat list remains available for mobile bottom nav and any existing imports.
 export const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/clients', label: 'Buyers', icon: Users },
+  { to: '/quotes', label: 'Quotes', icon: FileText },
   { to: '/orders', label: 'Orders', icon: ClipboardList },
   { to: '/products', label: 'Products', icon: Package },
   { to: '/tasks', label: 'Tasks', icon: CheckSquare },

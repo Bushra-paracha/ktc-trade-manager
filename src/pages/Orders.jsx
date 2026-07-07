@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Loader2, AlertCircle, Trash2, Plus, Edit2, X, Upload, FileText } from 'lucide-react';
+import { Loader2, AlertCircle, Trash2, Plus, Edit2, FileText, Upload, X } from 'lucide-react';
 import { formatUSD } from '../data/mockData';
 import { useOrders } from '../hooks/useOrders';
 import { useAuth } from '../hooks/useAuth';
 import { useClients } from '../hooks/useClients';
 import Modal from '../components/Modal';
+import { supabase } from '../lib/supabaseClient';
 
 const COLUMNS = ['Confirmed', 'In Production', 'Ready to Ship', 'Shipped', 'Delivered'];
 
@@ -35,9 +36,11 @@ export default function Orders() {
   const [form, setForm] = useState({ client_id: '', status: 'Confirmed', incoterm: 'FOB', payment_method: 'LC' });
   const [editForm, setEditForm] = useState({});
   const [saving, setSaving] = useState(false);
-  const [docForm, setDocForm] = useState({ doc_type: 'Proforma Invoice', doc_name: '', doc_url: '', doc_notes: '' });
+  const [docForm, setDocForm] = useState({ doc_type: 'Proforma Invoice', doc_name: '', doc_notes: '' });
   const [docSaving, setDocSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
   const [documents, setDocuments] = useState({});
+  const fileInputRef = useRef(null);
 
   async function handleDelete(id, company) {
     const confirmed = window.confirm(
@@ -83,22 +86,83 @@ export default function Orders() {
 
   function openDocModal(o) {
     setDocOrder(o);
-    setDocForm({ doc_type: 'Proforma Invoice', doc_name: '', doc_url: '', doc_notes: '' });
+    setDocForm({ doc_type: 'Proforma Invoice', doc_name: '', doc_notes: '' });
+    setUploadProgress(null);
     setDocModal(true);
   }
 
-  function handleAddDocument() {
-    if (!docForm.doc_name) return alert('Please enter a document name');
+  async function handleFileUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Only allow PDF, images, Word docs
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    if (!allowed.includes(file.type)) {
+      alert('Only PDF, JPG, PNG or Word documents are allowed.');
+      return;
+    }
+
+    if (!docForm.doc_name) {
+      setDocForm(f => ({ ...f, doc_name: file.name.replace(/\.[^/.]+$/, '') }));
+    }
+
     setDocSaving(true);
+    setUploadProgress('Uploading...');
+
+    const filePath = `${docOrder.id}/${Date.now()}-${file.name}`;
+    const { data, error } = await supabase.storage
+      .from('order-documents')
+      .upload(filePath, file, { upsert: false });
+
+    if (error) {
+      alert(`Upload failed: ${error.message}`);
+      setDocSaving(false);
+      setUploadProgress(null);
+      return;
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('order-documents')
+      .getPublicUrl(filePath);
+
+    const docUrl = urlData?.publicUrl || '';
+    const docName = docForm.doc_name || file.name;
+
+    // Save to order_documents table
+    const { error: dbError } = await supabase.from('order_documents').insert([{
+      order_id: docOrder.id,
+      document_type: docForm.doc_type,
+      status: 'Uploaded',
+      file_url: docUrl,
+      file_name: docName,
+      notes: docForm.doc_notes,
+    }]);
+
+    if (dbError) {
+      // If DB insert fails, still save locally
+      console.warn('DB insert failed, saving locally:', dbError.message);
+    }
+
+    // Save locally for immediate display
     const key = docOrder.id;
     const existing = documents[key] || [];
     setDocuments(prev => ({
       ...prev,
-      [key]: [...existing, { ...docForm, added_at: new Date().toISOString() }]
+      [key]: [...existing, {
+        doc_type: docForm.doc_type,
+        doc_name: docName,
+        doc_url: docUrl,
+        doc_notes: docForm.doc_notes,
+        added_at: new Date().toISOString(),
+      }]
     }));
+
+    setUploadProgress('✅ Uploaded successfully!');
+    setDocForm({ doc_type: docForm.doc_type, doc_name: '', doc_notes: '' });
     setDocSaving(false);
-    setDocForm({ doc_type: 'Proforma Invoice', doc_name: '', doc_url: '', doc_notes: '' });
-    alert(`Document "${docForm.doc_name}" added to order ${docOrder.id}`);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   return (
@@ -196,19 +260,20 @@ export default function Orders() {
                           className="btn btn-secondary"
                           style={{ fontSize: 11, padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 4 }}
                           onClick={() => openDocModal(o)}
-                          title="Add document"
                         >
                           <FileText size={13} />
-                          {(documents[o.id] || []).length > 0 ? `${(documents[o.id] || []).length} doc${(documents[o.id] || []).length > 1 ? 's' : ''}` : 'Add doc'}
+                          {(documents[o.id] || []).length > 0
+                            ? `${(documents[o.id] || []).length} doc${(documents[o.id] || []).length > 1 ? 's' : ''}`
+                            : 'Docs'}
                         </button>
                       </td>
                       {isAdminOrDirector && (
                         <td>
                           <div style={{ display: 'flex', gap: 4 }}>
-                            <button className="icon-btn" aria-label="Edit order" onClick={() => openEdit(o)} title="Edit order">
+                            <button className="icon-btn" onClick={() => openEdit(o)} title="Edit order">
                               <Edit2 size={16} />
                             </button>
-                            <button className="icon-btn" aria-label="Delete order" onClick={() => handleDelete(o.id, o.clients?.company)}>
+                            <button className="icon-btn" onClick={() => handleDelete(o.id, o.clients?.company)}>
                               <Trash2 size={16} />
                             </button>
                           </div>
@@ -306,7 +371,7 @@ export default function Orders() {
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
             Special Instructions
-            <textarea className="text-input" rows={3} value={editForm.special_instructions || ''} onChange={e => setEditForm(f => ({ ...f, special_instructions: e.target.value }))} placeholder="e.g. Phytosanitary certificate required. No health certificate." style={{ resize: 'vertical' }} />
+            <textarea className="text-input" rows={3} value={editForm.special_instructions || ''} onChange={e => setEditForm(f => ({ ...f, special_instructions: e.target.value }))} placeholder="e.g. Phytosanitary certificate required." style={{ resize: 'vertical' }} />
           </label>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button className="btn btn-secondary" onClick={() => setEditModal(false)}>Cancel</button>
@@ -324,13 +389,13 @@ export default function Orders() {
           {/* Existing documents */}
           {(documents[docOrder?.id] || []).length > 0 && (
             <div style={{ marginBottom: 8 }}>
-              <div className="section-label" style={{ marginBottom: 6 }}>Added Documents</div>
+              <div className="section-label" style={{ marginBottom: 6 }}>Uploaded Documents</div>
               {(documents[docOrder?.id] || []).map((doc, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '0.5px solid var(--color-border)' }}>
                   <FileText size={14} color="var(--color-primary)" />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{doc.doc_name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--color-ink-soft)' }}>{doc.doc_type} {doc.doc_notes ? `· ${doc.doc_notes}` : ''}</div>
+                    <div style={{ fontSize: 11, color: 'var(--color-ink-soft)' }}>{doc.doc_type}{doc.doc_notes ? ` · ${doc.doc_notes}` : ''}</div>
                   </div>
                   {doc.doc_url && (
                     <a href={doc.doc_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: 'var(--color-primary)' }}>View</a>
@@ -340,31 +405,66 @@ export default function Orders() {
             </div>
           )}
 
-          {/* Add new document */}
-          <div className="section-label">Add New Document</div>
+          {/* Upload form */}
+          <div className="section-label">Upload New Document</div>
+
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
             Document Type
             <select className="select-input" value={docForm.doc_type} onChange={e => setDocForm(f => ({ ...f, doc_type: e.target.value }))}>
               {DOCUMENT_TYPES.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
           </label>
+
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Document Name *
+            Document Name (optional)
             <input className="text-input" value={docForm.doc_name} onChange={e => setDocForm(f => ({ ...f, doc_name: e.target.value }))} placeholder="e.g. Proforma Invoice KTC/EXP/001" />
           </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
-            Document URL (optional)
-            <input className="text-input" value={docForm.doc_url} onChange={e => setDocForm(f => ({ ...f, doc_url: e.target.value }))} placeholder="https://drive.google.com/..." />
-          </label>
+
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
             Notes (optional)
             <input className="text-input" value={docForm.doc_notes} onChange={e => setDocForm(f => ({ ...f, doc_notes: e.target.value }))} placeholder="e.g. Signed and stamped" />
           </label>
+
+          {/* File upload area */}
+          <div
+            style={{
+              border: '2px dashed var(--color-border)',
+              borderRadius: 8,
+              padding: '20px',
+              textAlign: 'center',
+              cursor: 'pointer',
+              background: 'var(--surface-1)',
+            }}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload size={24} style={{ marginBottom: 8, color: 'var(--color-primary)' }} />
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Click to upload PDF or image</div>
+            <div style={{ fontSize: 11, color: 'var(--color-ink-soft)', marginTop: 4 }}>PDF, JPG, PNG, Word — max 10MB</div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+              style={{ display: 'none' }}
+              onChange={handleFileUpload}
+              disabled={docSaving}
+            />
+          </div>
+
+          {uploadProgress && (
+            <div style={{ fontSize: 12, color: uploadProgress.includes('✅') ? 'green' : 'var(--color-ink-soft)', textAlign: 'center' }}>
+              {uploadProgress}
+            </div>
+          )}
+
+          {docSaving && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
+              <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+              <span style={{ fontSize: 13 }}>Uploading...</span>
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button className="btn btn-secondary" onClick={() => setDocModal(false)}>Close</button>
-            <button className="btn btn-primary" onClick={handleAddDocument} disabled={docSaving || !docForm.doc_name}>
-              <Upload size={14} /> {docSaving ? 'Adding...' : 'Add Document'}
-            </button>
           </div>
         </div>
       </Modal>

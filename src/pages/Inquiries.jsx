@@ -5,6 +5,7 @@ import { formatUSD } from '../data/mockData';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import InquiryItemEditor from '../components/InquiryItemEditor';
+import ClientSearchSelect from '../components/ClientSearchSelect';
 import { SearchInput, SelectInput } from '../components/Toolbar';
 import { useInquiries } from '../hooks/useInquiries';
 import { useClients } from '../hooks/useClients';
@@ -377,10 +378,7 @@ export default function Inquiries() {
       <Modal open={modalOpen} onClose={() => { setModalOpen(false); resetForm(); setEditInquiry(null); }} title={editInquiry ? `Edit Inquiry ${editInquiry.id}` : 'New Inquiry & Quotation'}>
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <FormRow label="Client *">
-            <select className="select-input" required value={clientId} onChange={(e) => setClientId(e.target.value)}>
-              <option value="">— Select client —</option>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
-            </select>
+            <ClientSearchSelect clients={clients} value={clientId} onChange={setClientId} />
           </FormRow>
 
           <div className="grid grid-2">

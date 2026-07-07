@@ -10,6 +10,7 @@ import PublicInquiry from './pages/PublicInquiry';
 import Dashboard from './pages/Dashboard';
 import Clients from './pages/Clients';
 import ClientProfile from './pages/ClientProfile';
+import Pipeline from './pages/Pipeline';
 import Outreach from './pages/Outreach';
 import Inquiries from './pages/Inquiries';
 import PublicSubmissions from './pages/PublicSubmissions';
@@ -56,6 +57,7 @@ export default function App() {
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/clients" element={<Clients />} />
                     <Route path="/clients/:id" element={<ClientProfile />} />
+                    <Route path="/pipeline" element={<Pipeline />} />
                     <Route path="/outreach" element={<Outreach />} />
                     <Route path="/inquiries" element={<Inquiries />} />
                     <Route path="/inbox" element={<PublicSubmissions />} />

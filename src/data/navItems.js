@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   Users,
+  KanbanSquare,
   Mail,
   FileQuestion,
   ClipboardList,
@@ -21,6 +22,7 @@ import {
 export const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/clients', label: 'Clients', icon: Users },
+  { to: '/pipeline', label: 'Pipeline', icon: KanbanSquare },
   { to: '/tasks', label: 'Tasks', icon: CheckSquare },
   { to: '/suppliers', label: 'Suppliers', icon: Truck },
   { to: '/reexport', label: 'Re-export Traders', icon: Globe },

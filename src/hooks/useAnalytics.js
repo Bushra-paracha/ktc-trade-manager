@@ -2,15 +2,57 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const PIPELINE_STAGES = ['New', 'Contacted', 'Engaged', 'Negotiating', 'Won', 'Lost', 'Dormant'];
+const ORDER_STAGES = ['Inquiry', 'Quotation', 'Negotiation', 'Confirmed', 'Production', 'Ready to Ship', 'Shipped', 'Delivered'];
+
+function money(value) {
+  return Number(value) || 0;
+}
+
+function daysBetween(a, b) {
+  if (!a || !b) return null;
+  const diff = (new Date(b) - new Date(a)) / (1000 * 60 * 60 * 24);
+  return Number.isFinite(diff) && diff >= 0 ? diff : null;
+}
+
+function readProductsFromClient(client) {
+  const raw = client.products_interest || client.productsInterest || [];
+  if (Array.isArray(raw)) return raw.filter(Boolean);
+  if (typeof raw === 'string') return raw.split(',').map((item) => item.trim()).filter(Boolean);
+  return [];
+}
+
+function readOrderItems(order) {
+  if (Array.isArray(order.order_items) && order.order_items.length > 0) return order.order_items;
+  return [];
+}
+
+function getOrderValue(order) {
+  return money(order.total_value ?? order.value ?? order.revenue);
+}
 
 export function useAnalytics() {
   const [data, setData] = useState({
     monthlyRevenue: [],
     revenueByCountry: [],
     pipelineByStage: [],
+    orderWorkflow: [],
     leadToInquiryRate: 0,
     inquiryToOrderRate: 0,
     avgSalesCycleDays: 0,
+    totalRevenue: 0,
+    projectedPipelineValue: 0,
+    totalBuyers: 0,
+    activeBuyers: 0,
+    totalOrders: 0,
+    totalInquiries: 0,
+    activeCountries: 0,
+    averageOrderValue: 0,
+    topMarkets: [],
+    topProducts: [],
+    productInterest: [],
+    priorityMarkets: [],
+    reportHighlights: [],
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -24,8 +66,8 @@ export function useAnalytics() {
 
       const [clientsRes, inquiriesRes, ordersRes] = await Promise.all([
         supabase.from('clients').select('*'),
-        supabase.from('inquiries').select('*, clients(country)'),
-        supabase.from('orders').select('*, clients(country)'),
+        supabase.from('inquiries').select('*, clients(country, company)'),
+        supabase.from('orders').select('*, clients(country, company), order_items(*)'),
       ]);
 
       if (!active) return;
@@ -40,7 +82,6 @@ export function useAnalytics() {
       const inquiries = inquiriesRes.data || [];
       const orders = ordersRes.data || [];
 
-      // ---- Monthly revenue from orders (based on created_at), with a simple target line ----
       const now = new Date();
       const months = [];
       for (let i = 5; i >= 0; i--) {
@@ -50,68 +91,145 @@ export function useAnalytics() {
 
       const monthlyRevenue = months.map(({ year, month, label }) => {
         const revenue = orders
-          .filter((o) => {
-            const d = new Date(o.created_at);
+          .filter((order) => {
+            const d = new Date(order.created_at);
             return d.getFullYear() === year && d.getMonth() === month;
           })
-          .reduce((sum, o) => sum + (Number(o.total_value) || 0), 0);
+          .reduce((sum, order) => sum + getOrderValue(order), 0);
         return { month: label, revenue, target: 0 };
       });
 
-      // Target = simple rolling average of non-zero months, fallback to a flat number
-      const nonZero = monthlyRevenue.filter((m) => m.revenue > 0).map((m) => m.revenue);
-      const avgRevenue = nonZero.length ? nonZero.reduce((a, b) => a + b, 0) / nonZero.length : 0;
-      monthlyRevenue.forEach((m) => { m.target = Math.round(avgRevenue) || 0; });
+      const nonZeroMonths = monthlyRevenue.filter((item) => item.revenue > 0).map((item) => item.revenue);
+      const avgRevenue = nonZeroMonths.length ? nonZeroMonths.reduce((a, b) => a + b, 0) / nonZeroMonths.length : 0;
+      monthlyRevenue.forEach((item) => { item.target = Math.round(avgRevenue); });
 
-      // ---- Revenue by country (from orders, joined via clients) ----
+      const totalRevenue = orders.reduce((sum, order) => sum + getOrderValue(order), 0);
+      const averageOrderValue = orders.length ? Math.round(totalRevenue / orders.length) : 0;
+      const totalBuyers = clients.length;
+      const totalOrders = orders.length;
+      const totalInquiries = inquiries.length;
+      const activeBuyers = clients.filter((client) => ['Contacted', 'Engaged', 'Negotiating', 'Won'].includes(client.status)).length;
+      const activeCountries = new Set(clients.map((client) => client.country).filter(Boolean)).size;
+
+      const projectedPipelineValue = clients
+        .filter((client) => !['Won', 'Lost', 'Dormant'].includes(client.status))
+        .reduce((sum, client) => sum + money(client.revenue), 0);
+
       const countryTotals = {};
-      orders.forEach((o) => {
-        const country = o.clients?.country || 'Unknown';
-        countryTotals[country] = (countryTotals[country] || 0) + (Number(o.total_value) || 0);
+      orders.forEach((order) => {
+        const country = order.clients?.country || order.country || 'Unknown';
+        countryTotals[country] = countryTotals[country] || { country, revenue: 0, orders: 0, buyers: 0 };
+        countryTotals[country].revenue += getOrderValue(order);
+        countryTotals[country].orders += 1;
       });
-      const revenueByCountry = Object.entries(countryTotals)
-        .map(([country, value]) => ({ country, value }))
-        .sort((a, b) => b.value - a.value);
+      clients.forEach((client) => {
+        const country = client.country || 'Unknown';
+        countryTotals[country] = countryTotals[country] || { country, revenue: 0, orders: 0, buyers: 0 };
+        countryTotals[country].buyers += 1;
+      });
+      const revenueByCountry = Object.values(countryTotals)
+        .map((item) => ({ ...item, value: item.revenue }))
+        .sort((a, b) => b.revenue - a.revenue || b.buyers - a.buyers);
+      const topMarkets = revenueByCountry.slice(0, 6);
 
-      // ---- Pipeline by stage (from clients.status, using revenue field as value) ----
-      const stages = ['New', 'Contacted', 'Engaged', 'Negotiating', 'Won', 'Lost', 'Dormant'];
-      const pipelineByStage = stages.map((stage) => {
-        const stageClients = clients.filter((c) => c.status === stage);
+      const pipelineByStage = PIPELINE_STAGES.map((stage) => {
+        const stageClients = clients.filter((client) => client.status === stage);
         return {
           stage,
           count: stageClients.length,
-          value: stageClients.reduce((sum, c) => sum + (Number(c.revenue) || 0), 0),
+          value: stageClients.reduce((sum, client) => sum + money(client.revenue), 0),
+          avgScore: stageClients.length
+            ? Math.round(stageClients.reduce((sum, client) => sum + (Number(client.score) || 0), 0) / stageClients.length)
+            : 0,
         };
-      }).filter((s) => s.count > 0);
+      }).filter((item) => item.count > 0);
 
-      // ---- Conversion rates ----
-      const totalClients = clients.length;
-      const totalInquiries = inquiries.length;
-      const totalOrders = orders.length;
+      const orderWorkflow = ORDER_STAGES.map((stage) => {
+        const matching = orders.filter((order) => order.status === stage);
+        return {
+          stage,
+          count: matching.length,
+          value: matching.reduce((sum, order) => sum + getOrderValue(order), 0),
+        };
+      }).filter((item) => item.count > 0);
 
-      const leadToInquiryRate = totalClients ? Math.round((totalInquiries / totalClients) * 1000) / 10 : 0;
+      const productMap = {};
+      orders.forEach((order) => {
+        readOrderItems(order).forEach((item) => {
+          const product = item.product_name || item.name || item.product_id || 'Unknown Product';
+          productMap[product] = productMap[product] || { product, revenue: 0, quantity: 0, orders: 0 };
+          productMap[product].revenue += money(item.line_total) || money(item.quantity_mt) * money(item.unit_price);
+          productMap[product].quantity += money(item.quantity_mt);
+          productMap[product].orders += 1;
+        });
+      });
+      const topProducts = Object.values(productMap)
+        .sort((a, b) => b.revenue - a.revenue || b.quantity - a.quantity)
+        .slice(0, 8);
+
+      const interestMap = {};
+      clients.forEach((client) => {
+        readProductsFromClient(client).forEach((product) => {
+          interestMap[product] = interestMap[product] || { product, buyers: 0, score: 0 };
+          interestMap[product].buyers += 1;
+          interestMap[product].score += Number(client.score) || 0;
+        });
+      });
+      const productInterest = Object.values(interestMap)
+        .map((item) => ({ ...item, avgScore: item.buyers ? Math.round(item.score / item.buyers) : 0 }))
+        .sort((a, b) => b.buyers - a.buyers || b.avgScore - a.avgScore)
+        .slice(0, 8);
+
+      const leadToInquiryRate = totalBuyers ? Math.round((totalInquiries / totalBuyers) * 1000) / 10 : 0;
       const inquiryToOrderRate = totalInquiries ? Math.round((totalOrders / totalInquiries) * 1000) / 10 : 0;
 
-      // ---- Avg sales cycle: days between inquiry creation and order creation, for orders with a linked inquiry ----
-      let cycleDays = [];
-      orders.forEach((o) => {
-        if (!o.inquiry_id) return;
-        const inquiry = inquiries.find((i) => i.id === o.inquiry_id);
-        if (!inquiry) return;
-        const days = (new Date(o.created_at) - new Date(inquiry.created_at)) / (1000 * 60 * 60 * 24);
-        if (days >= 0) cycleDays.push(days);
-      });
+      const cycleDays = orders
+        .map((order) => {
+          if (!order.inquiry_id) return null;
+          const inquiry = inquiries.find((item) => item.id === order.inquiry_id);
+          return inquiry ? daysBetween(inquiry.created_at, order.created_at) : null;
+        })
+        .filter((item) => item !== null);
       const avgSalesCycleDays = cycleDays.length
         ? Math.round(cycleDays.reduce((a, b) => a + b, 0) / cycleDays.length)
         : 0;
+
+      const priorityMarkets = Object.values(countryTotals)
+        .map((market) => ({
+          ...market,
+          opportunityScore: market.buyers * 8 + market.orders * 12 + Math.round(market.revenue / 10000),
+        }))
+        .sort((a, b) => b.opportunityScore - a.opportunityScore)
+        .slice(0, 5);
+
+      const reportHighlights = [
+        totalRevenue > 0 ? `Confirmed revenue tracked: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(totalRevenue)}.` : 'No confirmed revenue has been logged yet.',
+        totalBuyers > 0 ? `${activeBuyers} of ${totalBuyers} buyers are active, engaged, negotiating, or won.` : 'Buyer records will appear here once added.',
+        topMarkets[0] ? `${topMarkets[0].country} is currently the strongest market by revenue/buyer activity.` : 'Top market insights will appear after buyers or orders are added.',
+        productInterest[0] ? `${productInterest[0].product} has the highest buyer interest in the CRM.` : 'Product interest insights will appear after buyer product interests are recorded.',
+      ];
 
       setData({
         monthlyRevenue,
         revenueByCountry,
         pipelineByStage,
+        orderWorkflow,
         leadToInquiryRate,
         inquiryToOrderRate,
         avgSalesCycleDays,
+        totalRevenue,
+        projectedPipelineValue,
+        totalBuyers,
+        activeBuyers,
+        totalOrders,
+        totalInquiries,
+        activeCountries,
+        averageOrderValue,
+        topMarkets,
+        topProducts,
+        productInterest,
+        priorityMarkets,
+        reportHighlights,
       });
       setLoading(false);
     }

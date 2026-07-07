@@ -24,7 +24,6 @@ export function useOrders() {
       .from('orders')
       .select('*, clients(company, country), order_items(*), shipments(*)')
       .order('created_at', { ascending: false });
-
     if (error) setError(error.message);
     else setOrders(data || []);
     setLoading(false);
@@ -34,11 +33,8 @@ export function useOrders() {
     fetchOrders();
   }, [fetchOrders]);
 
-  // Converts an accepted inquiry into a new order, copying client/items/value,
-  // and auto-creates the standard document checklist for it.
   const convertInquiryToOrder = useCallback(async (inquiry) => {
     const id = generateNextOrderId(orders);
-
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert([{
@@ -54,12 +50,8 @@ export function useOrders() {
       }])
       .select()
       .single();
+    if (orderError) return { error: orderError.message };
 
-    if (orderError) {
-      return { error: orderError.message };
-    }
-
-    // Copy line items
     const items = (inquiry.inquiry_items || []).map((it) => ({
       order_id: id,
       product_id: it.product_id,
@@ -68,20 +60,15 @@ export function useOrders() {
       unit_price: it.unit_price,
       line_total: it.line_total,
     }));
-
     if (items.length > 0) {
       const { error: itemsError } = await supabase.from('order_items').insert(items);
-      if (itemsError) {
-        return { error: `Order created, but items failed to copy: ${itemsError.message}` };
-      }
+      if (itemsError) return { error: `Order created, but items failed to copy: ${itemsError.message}` };
     }
 
-    // Auto-create document checklist from templates
     const { data: templates } = await supabase
       .from('document_checklist_templates')
       .select('*')
       .order('sort_order', { ascending: true });
-
     if (templates && templates.length > 0) {
       const docs = templates.map((t) => ({
         order_id: id,
@@ -92,9 +79,7 @@ export function useOrders() {
       await supabase.from('order_documents').insert(docs);
     }
 
-    // Mark the inquiry as Accepted
     await supabase.from('inquiries').update({ status: 'Accepted' }).eq('id', inquiry.id);
-
     await fetchOrders();
     return { data: order };
   }, [orders, fetchOrders]);
@@ -113,8 +98,19 @@ export function useOrders() {
     return { success: true };
   }, [fetchOrders]);
 
-  // Deletes an order. Related order_items, shipments, and order_documents
-  // are removed automatically via "on delete cascade" foreign keys.
+  // ← NEW: update any order fields
+  const updateOrder = useCallback(async (id, updates) => {
+    const { data, error } = await supabase
+      .from('orders')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) return { error: error.message };
+    await fetchOrders();
+    return { data };
+  }, [fetchOrders]);
+
   const deleteOrder = useCallback(async (id) => {
     const { error } = await supabase.from('orders').delete().eq('id', id);
     if (error) return { error: error.message };
@@ -134,7 +130,18 @@ export function useOrders() {
     return { data };
   }, [orders, fetchOrders]);
 
-  return { orders, loading, error, refetch: fetchOrders, convertInquiryToOrder, createOrder, updateOrderStatus, updateOrderProgress, deleteOrder };
+  return {
+    orders,
+    loading,
+    error,
+    refetch: fetchOrders,
+    convertInquiryToOrder,
+    createOrder,
+    updateOrder,
+    updateOrderStatus,
+    updateOrderProgress,
+    deleteOrder,
+  };
 }
 
 // ---------- Single order with full detail ----------
@@ -151,7 +158,6 @@ export function useOrder(id) {
       .select('*, clients(*), order_items(*), shipments(*), order_documents(*)')
       .eq('id', id)
       .single();
-
     if (error) setError(error.message);
     else setOrder(data);
     setLoading(false);

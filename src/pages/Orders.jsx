@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Loader2, AlertCircle, Trash2, Plus } from 'lucide-react';
+import { Loader2, AlertCircle, Trash2, Plus, Edit2, X, Upload, FileText } from 'lucide-react';
 import { formatUSD } from '../data/mockData';
 import { useOrders } from '../hooks/useOrders';
 import { useAuth } from '../hooks/useAuth';
@@ -9,13 +9,35 @@ import Modal from '../components/Modal';
 
 const COLUMNS = ['Confirmed', 'In Production', 'Ready to Ship', 'Shipped', 'Delivered'];
 
+const DOCUMENT_TYPES = [
+  'Proforma Invoice',
+  'Sales Contract',
+  'Commercial Invoice',
+  'Packing List',
+  'Bill of Lading',
+  'Certificate of Origin',
+  'Phytosanitary Certificate',
+  'Fumigation Certificate',
+  'SGS Inspection Report',
+  'LC (Letter of Credit)',
+  'Other',
+];
+
 export default function Orders() {
-  const { orders, loading, error, deleteOrder, createOrder } = useOrders();
+  const { orders, loading, error, deleteOrder, createOrder, updateOrder } = useOrders();
   const { clients } = useClients();
   const { isAdminOrDirector } = useAuth();
   const [modalOpen, setModalOpen] = useState(false);
+  const [editModal, setEditModal] = useState(false);
+  const [editOrder, setEditOrder] = useState(null);
+  const [docModal, setDocModal] = useState(false);
+  const [docOrder, setDocOrder] = useState(null);
   const [form, setForm] = useState({ client_id: '', status: 'Confirmed', incoterm: 'FOB', payment_method: 'LC' });
+  const [editForm, setEditForm] = useState({});
   const [saving, setSaving] = useState(false);
+  const [docForm, setDocForm] = useState({ doc_type: 'Proforma Invoice', doc_name: '', doc_url: '', doc_notes: '' });
+  const [docSaving, setDocSaving] = useState(false);
+  const [documents, setDocuments] = useState({});
 
   async function handleDelete(id, company) {
     const confirmed = window.confirm(
@@ -33,6 +55,50 @@ export default function Orders() {
     setSaving(false);
     if (error) alert(`Couldn't create order: ${error}`);
     else { setModalOpen(false); setForm({ client_id: '', status: 'Confirmed', incoterm: 'FOB', payment_method: 'LC' }); }
+  }
+
+  function openEdit(o) {
+    setEditOrder(o);
+    setEditForm({
+      status: o.status || 'Confirmed',
+      incoterm: o.incoterm || 'FOB',
+      payment_method: o.payment_method || 'LC',
+      pol_port: o.pol_port || '',
+      pod_port: o.pod_port || '',
+      total_value: o.total_value || '',
+      shipment_deadline: o.shipment_deadline ? o.shipment_deadline.slice(0, 10) : '',
+      special_instructions: o.special_instructions || '',
+      production_progress: o.production_progress || 0,
+    });
+    setEditModal(true);
+  }
+
+  async function handleEdit() {
+    setSaving(true);
+    const { error } = await updateOrder(editOrder.id, editForm);
+    setSaving(false);
+    if (error) alert(`Couldn't update order: ${error}`);
+    else setEditModal(false);
+  }
+
+  function openDocModal(o) {
+    setDocOrder(o);
+    setDocForm({ doc_type: 'Proforma Invoice', doc_name: '', doc_url: '', doc_notes: '' });
+    setDocModal(true);
+  }
+
+  function handleAddDocument() {
+    if (!docForm.doc_name) return alert('Please enter a document name');
+    setDocSaving(true);
+    const key = docOrder.id;
+    const existing = documents[key] || [];
+    setDocuments(prev => ({
+      ...prev,
+      [key]: [...existing, { ...docForm, added_at: new Date().toISOString() }]
+    }));
+    setDocSaving(false);
+    setDocForm({ doc_type: 'Proforma Invoice', doc_name: '', doc_url: '', doc_notes: '' });
+    alert(`Document "${docForm.doc_name}" added to order ${docOrder.id}`);
   }
 
   return (
@@ -109,6 +175,7 @@ export default function Orders() {
                     <th>Incoterm</th>
                     <th>Deadline</th>
                     <th>Status</th>
+                    <th>Docs</th>
                     {isAdminOrDirector && <th></th>}
                   </tr>
                 </thead>
@@ -124,17 +191,33 @@ export default function Orders() {
                       <td>{o.incoterm}</td>
                       <td className="cell-muted">{o.shipment_deadline ? new Date(o.shipment_deadline).toLocaleDateString() : '—'}</td>
                       <td>{o.status}</td>
+                      <td>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: 11, padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 4 }}
+                          onClick={() => openDocModal(o)}
+                          title="Add document"
+                        >
+                          <FileText size={13} />
+                          {(documents[o.id] || []).length > 0 ? `${(documents[o.id] || []).length} doc${(documents[o.id] || []).length > 1 ? 's' : ''}` : 'Add doc'}
+                        </button>
+                      </td>
                       {isAdminOrDirector && (
                         <td>
-                          <button className="icon-btn" aria-label="Delete order" onClick={() => handleDelete(o.id, o.clients?.company)}>
-                            <Trash2 size={16} />
-                          </button>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <button className="icon-btn" aria-label="Edit order" onClick={() => openEdit(o)} title="Edit order">
+                              <Edit2 size={16} />
+                            </button>
+                            <button className="icon-btn" aria-label="Delete order" onClick={() => handleDelete(o.id, o.clients?.company)}>
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                         </td>
                       )}
                     </tr>
                   ))}
                   {orders.length === 0 && (
-                    <tr><td colSpan={isAdminOrDirector ? 8 : 7}><div className="empty-state"><h4>No orders yet</h4><p>Convert an accepted inquiry into an order to get started.</p></div></td></tr>
+                    <tr><td colSpan={isAdminOrDirector ? 9 : 8}><div className="empty-state"><h4>No orders yet</h4><p>Convert an accepted inquiry into an order to get started.</p></div></td></tr>
                   )}
                 </tbody>
               </table>
@@ -143,6 +226,7 @@ export default function Orders() {
         </>
       )}
 
+      {/* New Order Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New Order">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
@@ -174,6 +258,112 @@ export default function Orders() {
             <button className="btn btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button>
             <button className="btn btn-primary" onClick={handleCreate} disabled={saving || !form.client_id}>
               {saving ? 'Creating...' : 'Create Order'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Order Modal */}
+      <Modal open={editModal} onClose={() => setEditModal(false)} title={`Edit Order — ${editOrder?.id}`}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Status
+            <select className="select-input" value={editForm.status || ''} onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}>
+              {COLUMNS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Incoterm
+            <select className="select-input" value={editForm.incoterm || ''} onChange={e => setEditForm(f => ({ ...f, incoterm: e.target.value }))}>
+              {['FOB', 'CIF', 'CFR', 'EXW', 'DDP'].map(i => <option key={i} value={i}>{i}</option>)}
+            </select>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Payment Method
+            <select className="select-input" value={editForm.payment_method || ''} onChange={e => setEditForm(f => ({ ...f, payment_method: e.target.value }))}>
+              {['LC', 'TT', 'DA', 'DP'].map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Port of Loading
+            <input className="text-input" value={editForm.pol_port || ''} onChange={e => setEditForm(f => ({ ...f, pol_port: e.target.value }))} placeholder="e.g. Port Qasim, Karachi" />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Port of Discharge
+            <input className="text-input" value={editForm.pod_port || ''} onChange={e => setEditForm(f => ({ ...f, pod_port: e.target.value }))} placeholder="e.g. Port Klang, Malaysia" />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Total Value (USD)
+            <input className="text-input" type="number" value={editForm.total_value || ''} onChange={e => setEditForm(f => ({ ...f, total_value: e.target.value }))} placeholder="e.g. 18088" />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Shipment Deadline
+            <input className="text-input" type="date" value={editForm.shipment_deadline || ''} onChange={e => setEditForm(f => ({ ...f, shipment_deadline: e.target.value }))} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Production Progress (%)
+            <input className="text-input" type="number" min="0" max="100" value={editForm.production_progress || 0} onChange={e => setEditForm(f => ({ ...f, production_progress: e.target.value }))} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Special Instructions
+            <textarea className="text-input" rows={3} value={editForm.special_instructions || ''} onChange={e => setEditForm(f => ({ ...f, special_instructions: e.target.value }))} placeholder="e.g. Phytosanitary certificate required. No health certificate." style={{ resize: 'vertical' }} />
+          </label>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button className="btn btn-secondary" onClick={() => setEditModal(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleEdit} disabled={saving}>
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Document Modal */}
+      <Modal open={docModal} onClose={() => setDocModal(false)} title={`Documents — ${docOrder?.id}`}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+          {/* Existing documents */}
+          {(documents[docOrder?.id] || []).length > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              <div className="section-label" style={{ marginBottom: 6 }}>Added Documents</div>
+              {(documents[docOrder?.id] || []).map((doc, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '0.5px solid var(--color-border)' }}>
+                  <FileText size={14} color="var(--color-primary)" />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{doc.doc_name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--color-ink-soft)' }}>{doc.doc_type} {doc.doc_notes ? `· ${doc.doc_notes}` : ''}</div>
+                  </div>
+                  {doc.doc_url && (
+                    <a href={doc.doc_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: 'var(--color-primary)' }}>View</a>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add new document */}
+          <div className="section-label">Add New Document</div>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Document Type
+            <select className="select-input" value={docForm.doc_type} onChange={e => setDocForm(f => ({ ...f, doc_type: e.target.value }))}>
+              {DOCUMENT_TYPES.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Document Name *
+            <input className="text-input" value={docForm.doc_name} onChange={e => setDocForm(f => ({ ...f, doc_name: e.target.value }))} placeholder="e.g. Proforma Invoice KTC/EXP/001" />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Document URL (optional)
+            <input className="text-input" value={docForm.doc_url} onChange={e => setDocForm(f => ({ ...f, doc_url: e.target.value }))} placeholder="https://drive.google.com/..." />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
+            Notes (optional)
+            <input className="text-input" value={docForm.doc_notes} onChange={e => setDocForm(f => ({ ...f, doc_notes: e.target.value }))} placeholder="e.g. Signed and stamped" />
+          </label>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button className="btn btn-secondary" onClick={() => setDocModal(false)}>Close</button>
+            <button className="btn btn-primary" onClick={handleAddDocument} disabled={docSaving || !docForm.doc_name}>
+              <Upload size={14} /> {docSaving ? 'Adding...' : 'Add Document'}
             </button>
           </div>
         </div>

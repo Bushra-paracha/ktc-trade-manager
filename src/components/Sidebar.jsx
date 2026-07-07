@@ -1,18 +1,28 @@
-import { NavLink } from 'react-router-dom';
-import { LogOut } from 'lucide-react';
-import { navItems } from '../data/navItems';
+import { NavLink, useLocation } from 'react-router-dom';
+import { LogOut, Sparkles } from 'lucide-react';
+import { navGroups } from '../data/navItems';
 import { useAuth } from '../hooks/useAuth';
 
 function initialsFrom(name, email) {
   if (name) {
-    return name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
+    return name
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
   }
   if (email) return email[0].toUpperCase();
   return '?';
 }
 
+function isGroupActive(group, pathname) {
+  return group.items.some((item) => (item.to === '/' ? pathname === '/' : pathname.startsWith(item.to)));
+}
+
 export default function Sidebar() {
   const { user, profile, signOut } = useAuth();
+  const location = useLocation();
 
   const displayName = profile?.full_name || user?.email || 'User';
   const role = profile?.role || 'Team Member';
@@ -22,22 +32,35 @@ export default function Sidebar() {
       <div className="sidebar-brand">
         <div className="sidebar-brand-mark">KTC</div>
         <div className="sidebar-brand-text">
-          <strong>Kassam Trading Co.</strong>
-          <span>Trade Manager</span>
+          <strong>Kassam Trading Company</strong>
+          <span>International Export CRM</span>
         </div>
       </div>
 
-      <nav className="sidebar-nav">
-        {navItems.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === '/'}
-            className={({ isActive }) => 'sidebar-link' + (isActive ? ' active' : '')}
-          >
-            <Icon />
-            {label}
-          </NavLink>
+      <div className="sidebar-focus-card">
+        <div className="sidebar-focus-icon"><Sparkles size={16} /></div>
+        <div>
+          <strong>Today’s focus</strong>
+          <span>Follow up hot buyers and move orders forward.</span>
+        </div>
+      </div>
+
+      <nav className="sidebar-nav" aria-label="Main navigation">
+        {navGroups.map((group) => (
+          <div className={'sidebar-group' + (isGroupActive(group, location.pathname) ? ' group-active' : '')} key={group.label}>
+            <div className="sidebar-group-label">{group.label}</div>
+            {group.items.map(({ to, label, icon: Icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={to === '/'}
+                className={({ isActive }) => 'sidebar-link' + (isActive ? ' active' : '')}
+              >
+                <Icon />
+                <span>{label}</span>
+              </NavLink>
+            ))}
+          </div>
         ))}
       </nav>
 
@@ -47,16 +70,11 @@ export default function Sidebar() {
           <strong style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayName}</strong>
           <span>{role}</span>
         </div>
-        <button
-          onClick={signOut}
-          aria-label="Sign out"
-          style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', display: 'flex' }}
-          title="Sign out"
-        >
+        <button onClick={signOut} aria-label="Sign out" className="sidebar-logout" title="Sign out">
           <LogOut size={16} />
         </button>
       </div>
-      <div className="sidebar-footer">KTC Trade Manager v1.0</div>
+      <div className="sidebar-footer">Sprint 1 UI · CRM v1.1</div>
     </aside>
   );
 }

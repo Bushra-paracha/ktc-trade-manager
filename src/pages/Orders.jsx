@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import ClientSearchSelect from '../components/ClientSearchSelect';
 import { Link } from 'react-router-dom';
 import { Loader2, AlertCircle, Trash2, Plus, Edit2, FileText, Upload, X } from 'lucide-react';
 import { formatUSD } from '../data/mockData';
@@ -313,10 +314,7 @@ export default function Orders() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
             Client *
-            <select className="select-input" value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}>
-              <option value="">— Select a client —</option>
-              {clients.filter(c => c.email).map(c => <option key={c.id} value={c.id}>{c.company || c.email}</option>)}
-            </select>
+            <ClientSearchSelect clients={clients} value={form.client_id} onChange={id => setForm(f => ({ ...f, client_id: id }))} />
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--color-ink-soft)', fontWeight: 600 }}>
             Status

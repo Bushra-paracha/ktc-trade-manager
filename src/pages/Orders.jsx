@@ -84,11 +84,28 @@ export default function Orders() {
     else setEditModal(false);
   }
 
-  function openDocModal(o) {
+  async function openDocModal(o) {
     setDocOrder(o);
     setDocForm({ doc_type: 'Proforma Invoice', doc_name: '', doc_notes: '' });
     setUploadProgress(null);
     setDocModal(true);
+    const { data, error } = await supabase
+      .from('order_documents')
+      .select('*')
+      .eq('order_id', o.id)
+      .order('created_at', { ascending: false });
+    if (!error && data) {
+      setDocuments(prev => ({
+        ...prev,
+        [o.id]: data.map(d => ({
+          doc_type: d.document_type,
+          doc_name: d.file_name || d.document_type,
+          doc_url: d.file_url || '',
+          doc_notes: d.notes || '',
+          added_at: d.created_at,
+        }))
+      }));
+    }
   }
 
   async function handleFileUpload(e) {

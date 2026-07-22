@@ -5,7 +5,6 @@ import { formatUSD } from '../data/mockData';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import InquiryItemEditor from '../components/InquiryItemEditor';
-import ClientSearchSelect from '../components/ClientSearchSelect';
 import { SearchInput, SelectInput } from '../components/Toolbar';
 import { useInquiries } from '../hooks/useInquiries';
 import { useClients } from '../hooks/useClients';
@@ -17,6 +16,12 @@ import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../hooks/useAuth';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+// Safe formatUSD wrapper — guards against null/undefined values
+const safeFormatUSD = (val) => {
+  const n = Number(val);
+  if (isNaN(n) || val === null || val === undefined) return 'USD —';
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+};
 const MAILBOXES = ['exports@kassamtradingcompany.com', 'sales@kassamtradingcompany.com', 'info@kassamtradingcompany.com'];
 const DEFAULT_SIGNATURE = `\n\nWarm regards,\n\nSultan Ali Paracha\nDirector, Kassam Trading Company\nKarachi, Pakistan\nTel: +92-21-2411786 | WhatsApp: +92-300-820-1074\nEmail: ktcmktg@gmail.com\nwww.kassamtradingcompany.com\nREAP Member #2-1-99-1195`;
 
@@ -253,7 +258,7 @@ export default function Inquiries() {
       <div className="page-header">
         <div>
           <h1>Inquiries</h1>
-          <p>{inquiries.length} inquiries · {formatUSD(totalValue)} total pipeline value</p>
+          <p>{inquiries.length} inquiries · {safeFormatUSD(totalValue)} total pipeline value</p>
         </div>
         {isAdminOrDirector ? (
           <button className="btn btn-primary" onClick={() => setModalOpen(true)}>
@@ -314,7 +319,7 @@ export default function Inquiries() {
                   <td>{i.incoterm}</td>
                   <td>{i.destination_port}</td>
                   <td>{i.payment_terms}</td>
-                  <td className="cell-strong">{formatUSD(i.total_value)}</td>
+                  <td className="cell-strong">{safeFormatUSD(i.total_value)}</td>
                   <td>
                     <select
                       className="select-input"
@@ -378,7 +383,10 @@ export default function Inquiries() {
       <Modal open={modalOpen} onClose={() => { setModalOpen(false); resetForm(); setEditInquiry(null); }} title={editInquiry ? `Edit Inquiry ${editInquiry.id}` : 'New Inquiry & Quotation'}>
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <FormRow label="Client *">
-            <ClientSearchSelect clients={clients} value={clientId} onChange={setClientId} />
+            <select className="select-input" required value={clientId} onChange={(e) => setClientId(e.target.value)}>
+              <option value="">— Select client —</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
+            </select>
           </FormRow>
 
           <div className="grid grid-2">
@@ -432,7 +440,7 @@ export default function Inquiries() {
 
           <div className="card" style={{ background: 'var(--color-primary-soft)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span className="cell-strong">Total Inquiry Value</span>
-            <span className="stat-card-value" style={{ fontSize: 22 }}>{formatUSD(liveTotal)}</span>
+            <span className="stat-card-value" style={{ fontSize: 22 }}>{safeFormatUSD(liveTotal)}</span>
           </div>
 
           {formError && <div style={{ color: 'var(--color-danger)', fontSize: 13 }}>{formError}</div>}

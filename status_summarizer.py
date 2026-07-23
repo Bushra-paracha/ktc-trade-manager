@@ -71,70 +71,171 @@ Rules:
 
 Format your response as clean, readable text suitable for executive communication."""
 
+# Interactive Health Status Picker
+st.subheader("🎯 Quick Health Check (Optional)")
+health_options = {
+    "🟢 On Track": "on_track",
+    "🟡 At Risk": "at_risk",
+    "🔴 Off Track": "off_track"
+}
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    on_track = st.button("🟢 On Track", use_container_width=True)
+with col2:
+    at_risk = st.button("🟡 At Risk", use_container_width=True)
+with col3:
+    off_track = st.button("🔴 Off Track", use_container_width=True)
+
+selected_health = None
+if on_track:
+    selected_health = "🟢 On Track"
+    st.session_state.health_status = selected_health
+elif at_risk:
+    selected_health = "🟡 At Risk"
+    st.session_state.health_status = selected_health
+elif off_track:
+    selected_health = "🔴 Off Track"
+    st.session_state.health_status = selected_health
+
+if "health_status" in st.session_state:
+    st.info(f"**Selected Health Status:** {st.session_state.health_status}")
+
+# Interactive Risk & Win Pickers
+st.subheader("📌 Add Details (Optional)")
+
+tab1, tab2, tab3 = st.tabs(["Key Risks", "Wins", "Next Steps"])
+
+with tab1:
+    st.markdown("**Enter Key Risks (one per line):**")
+    risks_text = st.text_area(
+        "Risk items:",
+        height=120,
+        key="risks_input",
+        placeholder="Compliance dependencies blocking product launch\nResource constraint on design team\nStakeholder approval pending"
+    )
+    if risks_text:
+        risks_list = [r.strip() for r in risks_text.split('\n') if r.strip()]
+        st.markdown("**Preview:**")
+        for risk in risks_list:
+            st.write(f"• {risk}")
+
+with tab2:
+    st.markdown("**Enter Wins (one per line):**")
+    wins_text = st.text_area(
+        "Win items:",
+        height=120,
+        key="wins_input",
+        placeholder="Beta test orders validated demand\nProduct imagery pipeline complete\nTeam morale remains strong"
+    )
+    if wins_text:
+        wins_list = [w.strip() for w in wins_text.split('\n') if w.strip()]
+        st.markdown("**Preview:**")
+        for win in wins_list:
+            st.write(f"✓ {win}")
+
+with tab3:
+    st.markdown("**Enter Next Steps (one per line):**")
+    steps_text = st.text_area(
+        "Next step items:",
+        height=120,
+        key="steps_input",
+        placeholder="Escalate legal review (target: EOW)\nConfirm contractor hire for design work\nFinalize packaging compliance docs"
+    )
+    if steps_text:
+        steps_list = [s.strip() for s in steps_text.split('\n') if s.strip()]
+        st.markdown("**Preview:**")
+        for idx, step in enumerate(steps_list, 1):
+            st.write(f"{idx}. {step}")
+
 # Process notes
-if st.button("✨ Generate Status Report", type="primary"):
-    if not notes.strip():
-        st.error("Please paste your project notes first.")
-    else:
-        with st.spinner("Analyzing notes..."):
-            try:
-                response = client.messages.create(
-                    model=model_choice,
-                    max_tokens=1000,
-                    system=SYSTEM_PROMPT,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": f"""Project: {project_name}
+st.divider()
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    if st.button("✨ Generate Status Report", type="primary", use_container_width=True):
+        if not notes.strip():
+            st.error("Please paste your project notes first.")
+        else:
+            with st.spinner("Analyzing notes..."):
+                try:
+                    # Build enhanced prompt with interactive selections
+                    user_context = f"""Project: {project_name}
 Period: {reporting_period}
 
 Project Notes:
-{notes}
+{notes}"""
+                    
+                    if "health_status" in st.session_state:
+                        user_context += f"\n\nInitial Health Assessment: {st.session_state.health_status}"
+                    
+                    if risks_text:
+                        user_context += f"\n\nKey Issues Identified:\n{risks_text}"
+                    
+                    if wins_text:
+                        user_context += f"\n\nRecent Wins:\n{wins_text}"
+                    
+                    if steps_text:
+                        user_context += f"\n\nProposed Next Steps:\n{steps_text}"
+                    
+                    user_context += "\n\nPlease generate a clear, executive-ready status report."
 
-Please generate a clear, executive-ready status report."""
-                        }
-                    ]
-                )
-
-                status_text = response.content[0].text
-
-                # Display results
-                st.success("✅ Status report generated!")
-
-                # Add header
-                st.markdown(f"""
-                ### {project_name}
-                **Reporting Period:** {reporting_period}
-                **Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-                ---
-                """)
-
-                # Display the status report
-                st.markdown(status_text)
-
-                # Copy-to-clipboard functionality
-                st.divider()
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("📋 Copy to Clipboard"):
-                        st.write("✅ Report copied! (paste in Slack, email, or docs)")
-
-                with col2:
-                    # Download as text
-                    st.download_button(
-                        label="⬇️ Download as .txt",
-                        data=f"{project_name}\n{reporting_period}\n\n{status_text}",
-                        file_name=f"status_{datetime.now().strftime('%Y%m%d')}.txt"
+                    response = client.messages.create(
+                        model=model_choice,
+                        max_tokens=1000,
+                        system=SYSTEM_PROMPT,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": user_context
+                            }
+                        ]
                     )
 
-                # Store in session for reference
-                st.session_state.last_report = status_text
+                    status_text = response.content[0].text
 
-            except anthropic.APIError as e:
-                st.error(f"API Error: {str(e)}")
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
+                    # Display results
+                    st.success("✅ Status report generated!")
+
+                    # Add header
+                    st.markdown(f"""
+                    ### {project_name}
+                    **Reporting Period:** {reporting_period}
+                    **Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+                    ---
+                    """)
+
+                    # Display the status report
+                    st.markdown(status_text)
+
+                    # Copy-to-clipboard functionality
+                    st.divider()
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("📋 Copy to Clipboard"):
+                            st.write("✅ Report copied! (paste in Slack, email, or docs)")
+
+                    with col2:
+                        # Download as text
+                        st.download_button(
+                            label="⬇️ Download as .txt",
+                            data=f"{project_name}\n{reporting_period}\n\n{status_text}",
+                            file_name=f"status_{datetime.now().strftime('%Y%m%d')}.txt"
+                        )
+
+                    # Store in session for reference
+                    st.session_state.last_report = status_text
+
+                except anthropic.APIError as e:
+                    st.error(f"API Error: {str(e)}")
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
+
+with col2:
+    if st.button("🔄 Clear All", use_container_width=True):
+        st.session_state.clear()
+        st.rerun()
 
 # Example section (collapsible)
 with st.expander("📖 Example: KTC Project Notes → Status"):

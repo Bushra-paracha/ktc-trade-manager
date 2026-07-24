@@ -29,6 +29,67 @@ export function useEmailTemplates() {
   return { templates, loading, error, refetch: fetchTemplates };
 }
 
+export async function createEmailTemplate({ name, subject, bodyHtml }) {
+  const { data, error } = await supabase
+    .from('email_templates')
+    .insert([{
+      name: name.trim(),
+      subject: subject.trim(),
+      body_html: bodyHtml,
+      category: 'Custom',
+    }])
+    .select()
+    .single();
+
+  return { data, error: error?.message || null };
+}
+
+async function callSenderManager(action, payload = {}) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/manage-email-senders`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Sender management failed');
+  return data;
+}
+
+export function useEmailSenders() {
+  const [senders, setSenders] = useState([]);
+  const [domains, setDomains] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await callSenderManager('list');
+      setSenders((data.senders || []).filter((sender) => sender.active !== false));
+      setDomains(data.domains || []);
+    } catch (err) {
+      setError(err.message);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
+  return { senders, domains, loading, error, refetch };
+}
+
+export const addEmailDomain = (domain) => callSenderManager('add-domain', { domain });
+export const verifyEmailDomain = (domain) => callSenderManager('verify-domain', { domain });
+export const addEmailSender = ({ email, name }) => callSenderManager('add-sender', { email, name });
+
 // ---------- Campaigns + Messages ----------
 export function useEmailMessages() {
   const [messages, setMessages] = useState([]);

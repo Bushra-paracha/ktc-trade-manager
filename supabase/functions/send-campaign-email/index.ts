@@ -54,7 +54,24 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 2. Send via Brevo
+    // 2. Confirm the stored From address is an active sender in Brevo.
+    // Never trust a sender address supplied through the browser/database alone.
+    const sendersRes = await fetch('https://api.brevo.com/v3/senders', {
+      headers: { 'api-key': BREVO_API_KEY, 'Accept': 'application/json' },
+    });
+    const sendersData = await sendersRes.json().catch(() => ({}));
+    const senderAllowed = sendersRes.ok && (sendersData.senders || []).some(
+      (sender) => sender.active !== false && sender.email?.toLowerCase() === message.sender_email?.toLowerCase()
+    );
+    if (!senderAllowed) {
+      await supabase.from('email_messages').update({ status: 'Failed' }).eq('id', messageId);
+      return new Response(
+        JSON.stringify({ error: 'Sender is not active or verified in Brevo' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // 3. Send via Brevo
     const brevoRes = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       headers: {
@@ -92,7 +109,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 3. Update message row with Brevo message ID and Sent status
+    // 4. Update message row with Brevo message ID and Sent status
     const brevoMessageId = brevoData.messageId || null;
 
     const { error: updateError } = await supabase

@@ -1,0 +1,84 @@
+const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY');
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+async function brevo(path: string, init: RequestInit = {}) {
+  if (!BREVO_API_KEY) throw new Error('BREVO_API_KEY is not configured');
+  const response = await fetch(`https://api.brevo.com/v3${path}`, {
+    ...init,
+    headers: {
+      'api-key': BREVO_API_KEY,
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      ...(init.headers || {}),
+    },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.message || data.error || `Brevo request failed (${response.status})`);
+  }
+  return data;
+}
+
+function normalizeDomain(value: string) {
+  return value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+
+  try {
+    const { action, domain, email, name } = await req.json();
+
+    if (action === 'list') {
+      const [senderData, domainData] = await Promise.all([
+        brevo('/senders'),
+        brevo('/senders/domains'),
+      ]);
+      return json({
+        senders: senderData.senders || [],
+        domains: domainData.domains || [],
+      });
+    }
+
+    if (action === 'add-domain') {
+      const cleanDomain = normalizeDomain(domain || '');
+      if (!cleanDomain || !cleanDomain.includes('.')) return json({ error: 'Enter a valid domain' }, 400);
+      return json(await brevo('/senders/domains', {
+        method: 'POST',
+        body: JSON.stringify({ name: cleanDomain }),
+      }));
+    }
+
+    if (action === 'verify-domain') {
+      const cleanDomain = normalizeDomain(domain || '');
+      if (!cleanDomain) return json({ error: 'Domain is required' }, 400);
+      await brevo(`/senders/domains/${encodeURIComponent(cleanDomain)}/authenticate`, { method: 'PUT' });
+      return json(await brevo(`/senders/domains/${encodeURIComponent(cleanDomain)}`));
+    }
+
+    if (action === 'add-sender') {
+      const cleanEmail = (email || '').trim().toLowerCase();
+      if (!cleanEmail.includes('@')) return json({ error: 'Enter a valid sender email' }, 400);
+      return json(await brevo('/senders', {
+        method: 'POST',
+        body: JSON.stringify({ email: cleanEmail, name: (name || 'Kassam Trading Company').trim() }),
+      }));
+    }
+
+    return json({ error: 'Unknown action' }, 400);
+  } catch (err) {
+    return json({ error: err.message }, 502);
+  }
+});

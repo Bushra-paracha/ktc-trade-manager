@@ -120,7 +120,16 @@ export default function ClientProfile() {
           </div>
         </div>
         <div className="buyer-profile-actions">
-          <a className="btn btn-secondary" href={client.email ? `mailto:${client.email}` : undefined} aria-disabled={!client.email}><Mail /> Email</a>
+          <Link
+            className="btn btn-secondary"
+            to={client.email ? `/outreach?client=${encodeURIComponent(client.id)}&compose=1` : '#'}
+            aria-disabled={!client.email}
+            onClick={(event) => {
+              if (!client.email) event.preventDefault();
+            }}
+          >
+            <Mail /> Email
+          </Link>
           <a className="btn btn-secondary" href={client.phone ? `https://wa.me/${String(client.phone).replace(/\D/g, '')}` : undefined} target="_blank" rel="noreferrer" aria-disabled={!client.phone}><MessageCircle /> WhatsApp</a>
           <Link className="btn btn-primary" to="/inquiries"><Send /> New Quote</Link>
         </div>

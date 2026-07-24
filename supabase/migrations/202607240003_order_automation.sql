@@ -1,5 +1,8 @@
 begin;
 
+alter table public.clients
+  add column if not exists whatsapp_number text;
+
 create table if not exists public.notification_outbox (
   id uuid primary key default gen_random_uuid(),
   order_id text not null references public.orders(id) on delete cascade,
@@ -69,7 +72,7 @@ declare
   buyer_phone text;
 begin
   if old.status is not distinct from new.status then return new; end if;
-  select nullif(btrim(c.phone), '') into buyer_phone
+  select nullif(btrim(c.whatsapp_number), '') into buyer_phone
   from public.clients c where c.id = new.client_id;
 
   if buyer_phone is not null then
@@ -135,11 +138,11 @@ begin
   get diagnostics overdue_count = row_count;
 
   with due as (
-    select r.id, r.order_id, nullif(btrim(c.phone), '') recipient
+    select r.id, r.order_id, nullif(btrim(c.whatsapp_number), '') recipient
     from public.repeat_order_reminders r
     join public.clients c on c.id = r.client_id
     where r.status = 'scheduled' and r.remind_at <= now()
-      and nullif(btrim(c.phone), '') is not null
+      and nullif(btrim(c.whatsapp_number), '') is not null
     for update of r skip locked
   ), queued as (
     insert into public.notification_outbox(

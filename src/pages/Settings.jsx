@@ -83,7 +83,7 @@ export default function Settings() {
     setInviteResult(null);
     try {
       // Send Supabase magic link invite
-      const { data, error } = await supabase.auth.admin.inviteUserByEmail(inviteForm.email, {
+      const { error } = await supabase.auth.admin.inviteUserByEmail(inviteForm.email, {
         data: {
           full_name: inviteForm.full_name,
           role: inviteForm.role,

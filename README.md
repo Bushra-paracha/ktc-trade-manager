@@ -129,3 +129,12 @@ project before production. After deployment, open an order as an Admin or Direct
 
 Run `npm run lint` and `npm run build` before deployment. Deploy the generated Vite application
 with the same two public environment variables configured in the hosting platform.
+# Order automation
+
+Phase 3 adds database-backed SLA timers, WhatsApp notification outbox processing,
+and repeat-order reminders 30 days after delivery. Deploy
+`supabase/functions/dispatch-whatsapp`, configure the three non-browser secrets
+documented in `.env.example`, and invoke the function hourly with an
+`Authorization: Bearer <AUTOMATION_SECRET>` header. Create and approve the
+`order_status_update` and `repeat_order_reminder` templates in WhatsApp Manager
+before enabling the schedule.

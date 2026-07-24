@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Navigate, Routes, Route } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import Sidebar from './components/Sidebar';
@@ -11,28 +11,11 @@ import OrderTracking from './pages/OrderTracking';
 import Dashboard from './pages/Dashboard';
 import Clients from './pages/Clients';
 import ClientProfile from './pages/ClientProfile';
-import Pipeline from './pages/Pipeline';
-import Outreach from './pages/Outreach';
-import Inquiries from './pages/Inquiries';
-import PublicSubmissions from './pages/PublicSubmissions';
-import InboundInbox from './pages/InboundInbox';
-import Tasks from './pages/Tasks';
-import Suppliers from './pages/Suppliers';
-import Policies from './pages/Policies';
-import ReexportTraders from './pages/ReexportTraders';
 import Orders from './pages/Orders';
 import OrderDetail from './pages/OrderDetail';
-import Shipments from './pages/Shipments';
 import Documents from './pages/Documents';
-import Products from './pages/Products';
-import Amazon from './pages/Amazon';
-import Analytics from './pages/Analytics';
+import Payments from './pages/Payments';
 import Settings from './pages/Settings';
-import QuotationGenerator from './pages/QuotationGenerator';
-import Templates from './pages/Templates';
-import LeadScoring from './pages/LeadScoring';
-import WebsiteGrowth from './pages/WebsiteGrowth';
-import AmazonSetup from './pages/AmazonSetup';
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -64,28 +47,13 @@ export default function App() {
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/clients" element={<Clients />} />
                     <Route path="/clients/:id" element={<ClientProfile />} />
-                    <Route path="/pipeline" element={<Pipeline />} />
-                    <Route path="/outreach" element={<Outreach />} />
-                    <Route path="/inquiries" element={<Inquiries />} />
-                    <Route path="/inbox" element={<PublicSubmissions />} />
-                    <Route path="/inbound" element={<InboundInbox />} />
-                    <Route path="/tasks" element={<Tasks />} />
-                    <Route path="/suppliers" element={<Suppliers />} />
-                    <Route path="/policies" element={<Policies />} />
-                    <Route path="/reexport" element={<ReexportTraders />} />
                     <Route path="/orders" element={<Orders />} />
                     <Route path="/orders/:id" element={<OrderDetail />} />
-                    <Route path="/shipments" element={<Shipments />} />
                     <Route path="/documents" element={<Documents />} />
-                    <Route path="/products" element={<Products />} />
-                    <Route path="/amazon" element={<Amazon />} />
-                    <Route path="/analytics" element={<Analytics />} />
-                    <Route path="/quotes" element={<QuotationGenerator />} />
-                    <Route path="/templates" element={<Templates />} />
-                    <Route path="/lead-scoring" element={<LeadScoring />} />
-                    <Route path="/website-growth" element={<WebsiteGrowth />} />
-                    <Route path="/amazon-setup" element={<AmazonSetup />} />
+                    <Route path="/payments" element={<Payments />} />
                     <Route path="/settings" element={<Settings />} />
+                    <Route path="/shipments" element={<Navigate to="/orders" replace />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </div>
               </div>

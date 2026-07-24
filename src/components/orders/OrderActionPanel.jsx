@@ -1,6 +1,6 @@
 import { ClipboardCheck, FileText, Mail, MessageCircle, Ship } from 'lucide-react';
 
-export default function OrderActionPanel({ order }) {
+export default function OrderActionPanel({ order, onGeneratePI, onDocuments, onShipment }) {
   const buyer = order?.clients?.company || 'buyer';
   const orderId = order?.id || 'this order';
   const value = order?.total_value ? `USD ${Number(order.total_value).toLocaleString()}` : 'the agreed value';
@@ -14,9 +14,9 @@ export default function OrderActionPanel({ order }) {
   }
 
   const actions = [
-    { icon: FileText, label: 'Generate PI', helper: 'Prepare buyer-facing invoice' },
-    { icon: ClipboardCheck, label: 'Check documents', helper: 'Review required export docs' },
-    { icon: Ship, label: 'Book shipment', helper: 'Add container and vessel details' },
+    { icon: FileText, label: 'Generate PI', helper: 'Prepare buyer-facing invoice', onClick: onGeneratePI },
+    { icon: ClipboardCheck, label: 'Check documents', helper: 'Review required export docs', onClick: onDocuments },
+    { icon: Ship, label: 'Book shipment', helper: 'Add container and vessel details', onClick: onShipment },
     { icon: Mail, label: 'Email update', helper: `Confirm ${value}` },
     { icon: MessageCircle, label: 'Copy follow-up', helper: 'WhatsApp/email text', onClick: copyMessage },
   ];

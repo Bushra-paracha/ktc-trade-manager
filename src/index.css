@@ -4022,3 +4022,107 @@ tbody tr:hover {
 @media (max-width: 1100px) { .mega-grid.two, .template-grid, .kpi-grid.four { grid-template-columns: 1fr 1fr; } .quote-summary-card { position: static; } .lead-row { grid-template-columns: 1fr; align-items: stretch; } }
 @media (max-width: 760px) { .mega-grid.two, .template-grid, .kpi-grid.four, .form-grid.two-cols, .template-controls { grid-template-columns: 1fr; } .sprint8-hero { padding: 18px; } .quote-total-box strong { font-size: 30px; } }
 @media print { .sidebar, .topbar, .bottom-nav, .header-actions, .button-stack, .template-controls { display: none !important; } .app-shell, .app-main, .page-content { display: block !important; margin: 0 !important; padding: 0 !important; } .card { box-shadow: none !important; } }
+
+/* ===== Phase 2: consolidated order workspace ===== */
+.spin { animation: spin 1s linear infinite; }
+.order-tabs {
+  position: sticky;
+  top: 68px;
+  z-index: 20;
+  display: flex;
+  gap: 5px;
+  margin: 16px 0;
+  padding: 5px;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: var(--shadow-sm);
+  scrollbar-width: none;
+}
+.order-tabs::-webkit-scrollbar { display: none; }
+.order-tabs button {
+  flex: 1 0 auto;
+  border: 0;
+  border-radius: 11px;
+  padding: 10px 14px;
+  background: transparent;
+  color: var(--color-ink-soft);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: capitalize;
+  cursor: pointer;
+}
+.order-tabs button.active { background: var(--color-primary); color: #fff; }
+.focused-tab-card { padding: 20px; }
+.focused-tab-grid { display: grid; gap: 14px; max-width: 820px; }
+.progress-number { color: var(--color-primary); font-size: 30px; }
+.production-slider { width: 100%; margin: 24px 0 14px; accent-color: var(--color-primary); }
+.focused-tab-card .large-progress { margin-bottom: 20px; }
+.payment-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 20px;
+}
+.payment-totals > div {
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface-alt);
+}
+.payment-totals span, .payment-list-row span { display: block; color: var(--color-ink-soft); font-size: 12px; }
+.payment-totals strong { display: block; margin-top: 4px; font-size: 20px; }
+.payment-list { overflow: hidden; padding: 0; }
+.payment-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 17px;
+  border-bottom: 1px solid var(--color-border);
+  color: inherit;
+  text-decoration: none;
+}
+.payment-list-row:last-child { border-bottom: 0; }
+.payment-list-row > div:last-child { text-align: right; }
+.payment-state { margin-top: 4px; font-weight: 800; }
+.state-received, .state-reconciled { color: var(--color-success) !important; }
+.state-due { color: var(--color-warning) !important; }
+.state-cancelled { color: var(--color-danger) !important; }
+.payment-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 820px; }
+.activity-timeline { display: flex; flex-direction: column; padding: 8px 0; }
+.activity-event { position: relative; display: grid; grid-template-columns: 20px 1fr; gap: 12px; padding: 0 0 22px; }
+.activity-event:not(:last-child)::before { content: ""; position: absolute; left: 6px; top: 14px; bottom: 0; width: 2px; background: var(--color-border); }
+.activity-dot { position: relative; z-index: 1; width: 14px; height: 14px; margin-top: 3px; border: 3px solid var(--color-primary-soft); border-radius: 50%; background: var(--color-primary); }
+.activity-event p { margin: 3px 0; color: var(--color-ink-soft); }
+.activity-event small { color: var(--color-ink-faint); }
+.loading-inline { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 28px; color: var(--color-ink-soft); }
+.danger-zone { display: flex; justify-content: flex-end; margin-top: 18px; }
+
+@media (max-width: 760px) {
+  .order-detail-hero { align-items: stretch; flex-direction: column; }
+  .order-detail-hero .hero-actions { display: grid; grid-template-columns: 1fr; }
+  .order-detail-hero .hero-actions .select-input,
+  .order-detail-hero .hero-actions .btn { width: 100%; min-height: 44px; }
+  .order-tabs { top: 58px; margin-left: -8px; margin-right: -8px; border-radius: 13px; }
+  .order-health-grid, .payment-summary-grid { grid-template-columns: 1fr 1fr; }
+  .order-detail-grid, .detail-grid, .payment-totals { grid-template-columns: 1fr; }
+  .stage-tracker { display: flex; overflow-x: auto; padding-bottom: 5px; }
+  .stage-step { min-width: 130px; }
+  .focused-tab-card { padding: 16px; }
+  .mobile-full-button { width: 100%; min-height: 46px; }
+  .payment-list-row { align-items: flex-start; }
+  .doc-checklist-row { grid-template-columns: auto 1fr; }
+  .doc-checklist-row .doc-status-select,
+  .doc-checklist-row > .badge,
+  .doc-checklist-row .doc-actions { grid-column: 2; }
+}
+
+@media (max-width: 480px) {
+  .order-health-grid, .payment-summary-grid { grid-template-columns: 1fr; }
+  .trade-stat-card strong { font-size: 18px; }
+  .payment-list-row { flex-direction: column; }
+  .payment-list-row > div:last-child { width: 100%; text-align: left; }
+}

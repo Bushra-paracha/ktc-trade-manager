@@ -74,7 +74,7 @@ export default function Sidebar() {
           <LogOut size={16} />
         </button>
       </div>
-      <div className="sidebar-footer">Sprint 2 Buyers · CRM v1.2</div>
+      <div className="sidebar-footer">KTC Order Workspace</div>
     </aside>
   );
 }

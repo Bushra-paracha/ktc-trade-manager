@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, CalendarDays, Copy, FileText, Loader2, PackageCheck, Plus, Ship, Trash2 } from 'lucide-react';
+import { ArrowLeft, BellRing, CalendarDays, Copy, FileText, Loader2, PackageCheck, Plus, Ship, Trash2 } from 'lucide-react';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import DocumentChecklistCard from '../components/orders/DocumentChecklistCard';
@@ -34,6 +34,7 @@ export default function OrderDetail() {
   const { user, isAdminOrDirector } = useAuth();
   const [payments, setPayments] = useState([]);
   const [activity, setActivity] = useState([]);
+  const [automation, setAutomation] = useState({ sla: null, reminder: null, notifications: [] });
   const [relatedLoading, setRelatedLoading] = useState(true);
   const [relatedError, setRelatedError] = useState('');
   const [shipmentModalOpen, setShipmentModalOpen] = useState(false);
@@ -53,13 +54,17 @@ export default function OrderDetail() {
   const fetchRelated = useCallback(async () => {
     setRelatedLoading(true);
     setRelatedError('');
-    const [paymentResult, activityResult] = await Promise.all([
+    const [paymentResult, activityResult, slaResult, reminderResult, notificationResult] = await Promise.all([
       supabase.from('order_payments').select('*').eq('order_id', id).order('created_at', { ascending: false }),
       supabase.from('order_activity').select('*').eq('order_id', id).order('created_at', { ascending: false }),
+      supabase.from('order_sla').select('*').eq('order_id', id).eq('milestone', 'shipment_deadline').maybeSingle(),
+      supabase.from('repeat_order_reminders').select('*').eq('order_id', id).maybeSingle(),
+      supabase.from('notification_outbox').select('id,event_type,status,scheduled_for,sent_at,last_error').eq('order_id', id).order('created_at', { ascending: false }).limit(10),
     ]);
     setPayments(paymentResult.data || []);
     setActivity(activityResult.data || []);
-    setRelatedError(paymentResult.error?.message || activityResult.error?.message || '');
+    setAutomation({ sla: slaResult.data, reminder: reminderResult.data, notifications: notificationResult.data || [] });
+    setRelatedError(paymentResult.error?.message || activityResult.error?.message || slaResult.error?.message || reminderResult.error?.message || notificationResult.error?.message || '');
     setRelatedLoading(false);
   }, [id]);
 
@@ -74,6 +79,9 @@ export default function OrderDetail() {
   const stageProgress = getStageProgress(order.status);
   const received = payments.filter((p) => ['Received', 'Reconciled'].includes(p.status)).reduce((sum, p) => sum + Number(p.amount || 0), 0);
   const due = Math.max(Number(order.total_value || 0) - received, 0);
+  const slaHelper = automation.sla
+    ? `${automation.sla.status} · ${new Date(automation.sla.due_at).toLocaleString()}`
+    : 'Set a shipment deadline to start';
 
   async function updateStatus(status) {
     setMessage('');
@@ -184,6 +192,7 @@ export default function OrderDetail() {
           <Stat icon={PackageCheck} label="Workflow" value={`${stageProgress}%`} helper={normalizeStatus(order.status)} />
           <Stat icon={CalendarDays} label="Deadline" value={order.shipment_deadline ? new Date(order.shipment_deadline).toLocaleDateString() : '—'} helper={order.pod_port || 'POD pending'} />
           <Stat icon={Ship} label="Documents" value={`${docsProgress.complete}/${docsProgress.total || 0}`} helper={`${docsProgress.percent}% complete`} />
+          <Stat icon={BellRing} label="SLA timer" value={automation.sla?.status || 'Not active'} helper={slaHelper} />
         </div>
         <div className="card stage-card"><div className="card-header"><div><h3>Order timeline</h3><p>Seven internal milestones from confirmation to closure.</p></div></div><StageTracker status={order.status} /></div>
         <div className="order-detail-grid">
@@ -216,6 +225,11 @@ export default function OrderDetail() {
 
       {activeTab === 'activity' && <div className="card focused-tab-card"><div className="card-header"><div><h3>Activity history</h3><p>Database-backed audit trail for important order events.</p></div></div>
         {relatedLoading ? <div className="loading-inline"><Loader2 className="spin" /> Loading…</div> : relatedError ? <div className="alert alert-danger">{relatedError}</div> : activity.length === 0 ? <div className="empty-state compact-empty"><p>No activity recorded yet.</p></div> : <div className="activity-timeline">{activity.map((event) => <div className="activity-event" key={event.id}><span className="activity-dot" /><div><strong>{activityLabel(event)}</strong><p>{event.from_value && `${event.from_value} → `}{event.to_value || ''}</p><small>{new Date(event.created_at).toLocaleString()}</small></div></div>)}</div>}
+        <div className="automation-summary">
+          <h4>Automation</h4>
+          <p>Repeat-order reminder: {automation.reminder ? `${automation.reminder.status} for ${new Date(automation.reminder.remind_at).toLocaleDateString()}` : 'scheduled after delivery'}</p>
+          <p>WhatsApp events: {automation.notifications.length ? `${automation.notifications.filter((item) => item.status === 'sent').length} sent · ${automation.notifications.filter((item) => item.status !== 'sent').length} pending/failed` : 'none queued'}</p>
+        </div>
       </div>}
 
       {isAdminOrDirector && activeTab === 'overview' && <div className="danger-zone"><button className="btn btn-ghost btn-sm danger-text" onClick={handleDeleteOrder} disabled={deleting}>{deleting ? <Loader2 className="spin" size={14} /> : <Trash2 size={14} />} Delete order</button></div>}

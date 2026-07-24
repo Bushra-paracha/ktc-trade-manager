@@ -9,7 +9,6 @@ import {
   Mail,
   MapPin,
   MessageCircle,
-  PackageCheck,
   Phone,
   Send,
   Tag,

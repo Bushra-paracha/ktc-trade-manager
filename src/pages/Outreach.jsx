@@ -6,26 +6,28 @@ import {
   Loader2,
   Mail,
   MousePointerClick,
+  Plus,
   RefreshCw,
   Reply,
   Send,
+  Settings,
   XCircle,
 } from 'lucide-react';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import { useClients } from '../hooks/useClients';
 import {
+  addEmailDomain,
+  addEmailSender,
+  createEmailTemplate,
   renderTemplate,
   sendOutreachEmails,
   syncTemplatesFromBrevo,
+  useEmailSenders,
   useEmailMessages,
   useEmailTemplates,
+  verifyEmailDomain,
 } from '../hooks/useOutreach';
-
-const SENDERS = [
-  'exports@kassamtradingcompany.com',
-  'sales@kassamtradingcompany.com',
-];
 
 function FormRow({ label, children }) {
   return (
@@ -78,18 +80,37 @@ export default function Outreach() {
     error: templatesError,
     refetch: refetchTemplates,
   } = useEmailTemplates();
+  const {
+    senders,
+    domains,
+    loading: sendersLoading,
+    error: sendersError,
+    refetch: refetchSenders,
+  } = useEmailSenders();
 
   const [composeOpen, setComposeOpen] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [sendersOpen, setSendersOpen] = useState(false);
   const [selectedClientIds, setSelectedClientIds] = useState([]);
   const [recipientSearch, setRecipientSearch] = useState('');
   const [templateId, setTemplateId] = useState('');
-  const [senderEmail, setSenderEmail] = useState(SENDERS[0]);
+  const [senderEmail, setSenderEmail] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
   const [sendResults, setSendResults] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
+  const [templateDraft, setTemplateDraft] = useState({ name: '', subject: '', body: '' });
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [managementMessage, setManagementMessage] = useState('');
+  const [domainDraft, setDomainDraft] = useState('');
+  const [senderDraft, setSenderDraft] = useState({ name: 'Kassam Trading Company', email: '' });
+  const [managingSender, setManagingSender] = useState(false);
+
+  useEffect(() => {
+    if (!senderEmail && senders.length) setSenderEmail(senders[0].email);
+  }, [senderEmail, senders]);
 
   useEffect(() => {
     if (searchParams.get('compose') !== '1') return;
@@ -188,6 +209,47 @@ export default function Outreach() {
     await refetch();
   }
 
+  async function handleCreateTemplate() {
+    if (!templateDraft.name.trim() || !templateDraft.subject.trim() || !templateDraft.body.trim()) return;
+    setTemplateSaving(true);
+    const { data, error } = await createEmailTemplate({
+      name: templateDraft.name,
+      subject: templateDraft.subject,
+      bodyHtml: templateDraft.body,
+    });
+    setTemplateSaving(false);
+    if (error) {
+      setManagementMessage(error);
+      return;
+    }
+    await refetchTemplates();
+    setTemplateId(data.id);
+    setSubject(data.subject);
+    setBody(data.body_html);
+    setTemplateDraft({ name: '', subject: '', body: '' });
+    setTemplateOpen(false);
+    setManagementMessage('Email template saved and selected.');
+  }
+
+  async function runSenderAction(action) {
+    setManagingSender(true);
+    setManagementMessage('');
+    try {
+      const data = action === 'domain'
+        ? await addEmailDomain(domainDraft)
+        : action === 'sender'
+          ? await addEmailSender(senderDraft)
+          : await verifyEmailDomain(action);
+      setManagementMessage(data.message || 'Brevo settings updated.');
+      if (action === 'domain') setDomainDraft('');
+      if (action === 'sender') setSenderDraft({ name: 'Kassam Trading Company', email: '' });
+      await refetchSenders();
+    } catch (err) {
+      setManagementMessage(err.message);
+    }
+    setManagingSender(false);
+  }
+
   const openRate = totals.sent ? `${((totals.opened / totals.sent) * 100).toFixed(1)}%` : '0.0%';
   const replyRate = totals.sent ? `${((totals.replied / totals.sent) * 100).toFixed(1)}%` : '0.0%';
 
@@ -199,6 +261,12 @@ export default function Outreach() {
           <p>Compose buyer emails and track Brevo delivery, opens, bounces, and replies.</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-secondary" onClick={() => setTemplateOpen(true)}>
+            <Plus size={16} /> Add template
+          </button>
+          <button className="btn btn-secondary" onClick={() => setSendersOpen(true)}>
+            <Settings size={16} /> Senders & domains
+          </button>
           <button className="btn btn-secondary" onClick={handleSyncTemplates} disabled={syncing}>
             {syncing ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={16} />}
             Sync templates
@@ -213,14 +281,14 @@ export default function Outreach() {
         </div>
       </div>
 
-      {(messagesError || templatesError || checkError) && (
+      {(messagesError || templatesError || sendersError || checkError) && (
         <div className="card padded" style={{ color: 'var(--color-danger)', marginBottom: 16 }}>
-          <AlertTriangle size={17} /> {messagesError || templatesError || checkError}
+          <AlertTriangle size={17} /> {messagesError || templatesError || sendersError || checkError}
         </div>
       )}
-      {(syncMessage || checkResult) && (
+      {(syncMessage || managementMessage || checkResult) && (
         <div className="card padded" style={{ marginBottom: 16 }}>
-          {syncMessage || `Reply check complete: ${checkResult.newReplies || 0} new replies found.`}
+          {syncMessage || managementMessage || `Reply check complete: ${checkResult.newReplies || 0} new replies found.`}
         </div>
       )}
 
@@ -285,8 +353,18 @@ export default function Outreach() {
       <Modal open={composeOpen} onClose={closeCompose} title="Compose Outreach Email">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <FormRow label="Send from">
-            <select className="select-input" value={senderEmail} onChange={(event) => setSenderEmail(event.target.value)}>
-              {SENDERS.map((sender) => <option key={sender}>{sender}</option>)}
+            <select
+              className="select-input"
+              value={senderEmail}
+              onChange={(event) => setSenderEmail(event.target.value)}
+              disabled={sendersLoading || !senders.length}
+            >
+              {!senders.length && <option value="">No verified Brevo senders available</option>}
+              {senders.map((sender) => (
+                <option key={sender.id || sender.email} value={sender.email}>
+                  {sender.name ? `${sender.name} — ` : ''}{sender.email}
+                </option>
+              ))}
             </select>
           </FormRow>
 
@@ -388,11 +466,153 @@ export default function Outreach() {
             <button
               className="btn btn-primary"
               onClick={handleSend}
-              disabled={sending || !selectedClients.length || !subject.trim() || !body.trim()}
+              disabled={sending || !senderEmail || !selectedClients.length || !subject.trim() || !body.trim()}
             >
               {sending ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={16} />}
               {sending ? 'Sending…' : `Send to ${selectedClients.length || 0}`}
             </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={templateOpen} onClose={() => setTemplateOpen(false)} title="Add Email Template">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <FormRow label="Template name">
+            <input
+              className="select-input"
+              value={templateDraft.name}
+              onChange={(event) => setTemplateDraft((current) => ({ ...current, name: event.target.value }))}
+              placeholder="Example: New buyer introduction"
+            />
+          </FormRow>
+          <FormRow label="Subject">
+            <input
+              className="select-input"
+              value={templateDraft.subject}
+              onChange={(event) => setTemplateDraft((current) => ({ ...current, subject: event.target.value }))}
+              placeholder="Export inquiry for {{company}}"
+            />
+          </FormRow>
+          <FormRow label="Body (HTML supported)">
+            <textarea
+              className="select-input"
+              rows={10}
+              value={templateDraft.body}
+              onChange={(event) => setTemplateDraft((current) => ({ ...current, body: event.target.value }))}
+              placeholder="Dear {{contact}}, …"
+            />
+          </FormRow>
+          <div className="cell-muted" style={{ fontSize: 12 }}>
+            Available merge tags: <code>{'{{company}}'}</code> <code>{'{{contact}}'}</code> <code>{'{{country}}'}</code> <code>{'{{city}}'}</code>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-secondary" onClick={() => setTemplateOpen(false)}>Cancel</button>
+            <button
+              className="btn btn-primary"
+              onClick={handleCreateTemplate}
+              disabled={templateSaving || !templateDraft.name.trim() || !templateDraft.subject.trim() || !templateDraft.body.trim()}
+            >
+              {templateSaving ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Plus size={16} />}
+              Save template
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={sendersOpen} onClose={() => setSendersOpen(false)} title="Senders & Domains">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div>
+            <h4 style={{ marginBottom: 8 }}>Active sender addresses</h4>
+            {senders.map((sender) => (
+              <div key={sender.id || sender.email} className="card padded" style={{ marginBottom: 8 }}>
+                <strong>{sender.name || 'Kassam Trading Company'}</strong>
+                <div className="cell-muted">{sender.email}</div>
+              </div>
+            ))}
+            {!senders.length && <div className="cell-muted">No active Brevo sender addresses found.</div>}
+          </div>
+
+          <div>
+            <h4 style={{ marginBottom: 8 }}>Add sender address</h4>
+            <div className="grid-2">
+              <FormRow label="Display name">
+                <input
+                  className="select-input"
+                  value={senderDraft.name}
+                  onChange={(event) => setSenderDraft((current) => ({ ...current, name: event.target.value }))}
+                />
+              </FormRow>
+              <FormRow label="Email address">
+                <input
+                  className="select-input"
+                  type="email"
+                  value={senderDraft.email}
+                  onChange={(event) => setSenderDraft((current) => ({ ...current, email: event.target.value }))}
+                  placeholder="sales@yourdomain.com"
+                />
+              </FormRow>
+            </div>
+            <button
+              className="btn btn-secondary"
+              style={{ marginTop: 10 }}
+              onClick={() => runSenderAction('sender')}
+              disabled={managingSender || !senderDraft.email.includes('@')}
+            >
+              <Plus size={16} /> Add sender
+            </button>
+          </div>
+
+          <div>
+            <h4 style={{ marginBottom: 8 }}>Sender domains</h4>
+            {domains.map((domain) => {
+              const domainName = domain.domain_name || domain.domain || domain.name;
+              const ready = domain.authenticated || domain.verified;
+              const dnsRecords = Object.values(domain.dns_records || {}).filter(Boolean);
+              return (
+                <div key={domain.id || domainName} className="card padded" style={{ marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div>
+                      <strong>{domainName}</strong>
+                      <div className="cell-muted">{ready ? 'Authenticated and ready' : 'DNS authentication required'}</div>
+                    </div>
+                    {!ready && (
+                      <button className="btn btn-secondary" onClick={() => runSenderAction(domainName)} disabled={managingSender}>
+                        <RefreshCw size={16} /> Check DNS
+                      </button>
+                    )}
+                  </div>
+                  {!ready && dnsRecords.length > 0 && (
+                    <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {dnsRecords.map((record) => (
+                        <div key={`${record.host_name}-${record.type}`} style={{ fontSize: 12 }}>
+                          <strong>{record.type} · {record.host_name}</strong>
+                          <code style={{ display: 'block', marginTop: 3, overflowWrap: 'anywhere' }}>{record.value}</code>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <input
+                className="select-input"
+                value={domainDraft}
+                onChange={(event) => setDomainDraft(event.target.value)}
+                placeholder="yourdomain.com"
+              />
+              <button
+                className="btn btn-secondary"
+                onClick={() => runSenderAction('domain')}
+                disabled={managingSender || !domainDraft.includes('.')}
+              >
+                <Plus size={16} /> Add domain
+              </button>
+            </div>
+            <p className="cell-muted" style={{ fontSize: 12, marginTop: 8 }}>
+              After adding a domain, copy the DNS records shown by Brevo into your domain provider, then use Check DNS.
+              Only authenticated domains should be used for outreach.
+            </p>
           </div>
         </div>
       </Modal>

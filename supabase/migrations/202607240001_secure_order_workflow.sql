@@ -189,11 +189,11 @@ security definer
 set search_path = public
 as $$
 declare
-  raw_token text := encode(gen_random_bytes(32), 'hex');
+  raw_token text := encode(extensions.gen_random_bytes(32), 'hex');
 begin
   if auth.uid() is null then raise exception 'Authentication required'; end if;
   update public.orders
-  set tracking_token_hash = digest(raw_token, 'sha256'),
+  set tracking_token_hash = extensions.digest(raw_token, 'sha256'),
       tracking_token_created_at = now()
   where id = p_order_id;
   if not found then raise exception 'Order not found'; end if;
@@ -250,7 +250,7 @@ as $$
   )
   from public.orders o
   left join public.clients c on c.id = o.client_id
-  where o.tracking_token_hash = digest(p_token, 'sha256')
+  where o.tracking_token_hash = extensions.digest(p_token, 'sha256')
   limit 1
 $$;
 

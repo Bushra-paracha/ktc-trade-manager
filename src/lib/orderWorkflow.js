@@ -1,12 +1,11 @@
 export const ORDER_STAGES = [
-  { label: 'Inquiry', aliases: ['Inquiry', 'Lead'], helper: 'Buyer request received' },
-  { label: 'Quotation', aliases: ['Quotation', 'Quote Sent', 'Proforma Sent'], helper: 'Price and terms shared' },
-  { label: 'Negotiation', aliases: ['Negotiation', 'Under Review'], helper: 'Terms being finalized' },
-  { label: 'Confirmed', aliases: ['Confirmed'], helper: 'Order accepted' },
-  { label: 'In Production', aliases: ['In Production', 'Production'], helper: 'Milling and packing' },
-  { label: 'Ready to Ship', aliases: ['Ready to Ship', 'Ready'], helper: 'Documents and cargo ready' },
-  { label: 'Shipped', aliases: ['Shipped', 'Departed', 'In Transit'], helper: 'Cargo on the way' },
-  { label: 'Delivered', aliases: ['Delivered', 'Completed'], helper: 'Buyer received goods' },
+  { label: 'Order Confirmed', aliases: ['Order Confirmed', 'Confirmed'], buyerStatus: 'Confirmed', helper: 'Order accepted' },
+  { label: 'Advance Payment Received', aliases: ['Advance Payment Received'], buyerStatus: 'Confirmed', helper: 'Advance payment recorded' },
+  { label: 'In Production', aliases: ['In Production', 'Production'], buyerStatus: 'In Production', helper: 'Milling and packing' },
+  { label: 'Ready to Ship', aliases: ['Ready to Ship', 'Ready'], buyerStatus: 'Ready to Ship', helper: 'Documents and cargo ready' },
+  { label: 'Shipped', aliases: ['Shipped', 'Departed', 'In Transit'], buyerStatus: 'Shipped', helper: 'Cargo on the way' },
+  { label: 'Balance Payment Received', aliases: ['Balance Payment Received'], buyerStatus: 'Shipped', helper: 'Final payment recorded' },
+  { label: 'Delivered & Closed', aliases: ['Delivered & Closed', 'Delivered', 'Completed', 'Closed'], buyerStatus: 'Delivered', helper: 'Buyer received goods' },
 ];
 
 export const ORDER_STATUS_OPTIONS = ORDER_STAGES.map((stage) => stage.label);
@@ -15,13 +14,18 @@ export function normalizeStatus(status = '') {
   const match = ORDER_STAGES.find((stage) =>
     stage.aliases.some((alias) => alias.toLowerCase() === String(status).toLowerCase())
   );
-  return match?.label || status || 'Confirmed';
+  return match?.label || status || 'Order Confirmed';
 }
 
 export function getStageIndex(status) {
   const normalized = normalizeStatus(status);
   const index = ORDER_STAGES.findIndex((stage) => stage.label === normalized);
-  return index === -1 ? 3 : index;
+  return index === -1 ? 0 : index;
+}
+
+export function getBuyerStatus(status) {
+  const stage = ORDER_STAGES[getStageIndex(status)];
+  return stage?.buyerStatus || 'Confirmed';
 }
 
 export function getStageProgress(status) {

@@ -104,3 +104,28 @@ This prototype currently reads from `src/data/mockData.js`. To connect a real ba
 Refer to the **KTC App PRD & User Journey** document (Section 9 — Technical Specifications)
 for the recommended tech stack: Node.js/Express or Python backend, PostgreSQL database,
 AWS S3 for documents, and JWT-based authentication.
+# KTC Trade Manager
+
+React/Vite operations app backed by Supabase Auth, PostgreSQL, Storage, and Edge Functions.
+
+## Local setup
+
+1. Install Node.js 20 or newer.
+2. Run `npm ci`.
+3. Copy `.env.example` to `.env`.
+4. Set `VITE_SUPABASE_URL` and the browser-safe `VITE_SUPABASE_ANON_KEY`.
+5. Run `npm run dev`.
+
+Never place a Supabase service-role key in a `VITE_` variable or in this repository.
+
+## Database deployment
+
+Link the Supabase CLI to the intended project, review the target with `supabase migration list`,
+then run `supabase db push`. The migrations are additive, but should be tested on a staging
+project before production. After deployment, open an order as an Admin or Director and use
+**Copy buyer link** to issue a secure, revocable tracking link.
+
+## Verification
+
+Run `npm run lint` and `npm run build` before deployment. Deploy the generated Vite application
+with the same two public environment variables configured in the hosting platform.

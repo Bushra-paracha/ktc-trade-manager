@@ -6,6 +6,7 @@ import Topbar from './components/Topbar';
 import BottomNav from './components/BottomNav';
 import Login from './pages/Login';
 import PublicInquiry from './pages/PublicInquiry';
+import OrderTracking from './pages/OrderTracking';
 
 import Dashboard from './pages/Dashboard';
 import Clients from './pages/Clients';
@@ -41,6 +42,7 @@ export default function App() {
       {/* Public route, no login required. Anyone with this link
           (from the website or LinkedIn) can submit an inquiry. */}
       <Route path="/quote" element={<PublicInquiry />} />
+      <Route path="/track/:token" element={<OrderTracking />} />
 
       {/* Everything else requires login */}
       <Route

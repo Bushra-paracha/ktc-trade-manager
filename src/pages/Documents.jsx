@@ -47,17 +47,21 @@ export default function Documents() {
   const verified = documents.filter((d) => ['Verified', 'Sent to Buyer'].includes(d.status)).length;
   const pending = documents.filter((d) => ['Pending', 'In Progress'].includes(d.status)).length;
 
-  function handleView(filePath) {
+  async function handleView(filePath) {
     if (!filePath) return alert('No file uploaded yet.');
-    const { data } = supabase.storage.from('order-documents').getPublicUrl(filePath);
-    if (data?.publicUrl) window.open(data.publicUrl, '_blank');
-    else alert('Could not open this document.');
+    const { data, error } = await supabase.storage.from('order-documents').createSignedUrl(filePath, 60);
+    if (error) return alert(error.message);
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
   }
 
   async function handleRemove(docId, filePath) {
     if (!window.confirm('Remove this file from the checklist?')) return;
-    if (filePath) await supabase.storage.from('order-documents').remove([filePath]);
-    await supabase.from('order_documents').update({ file_path: null, file_name: null, status: 'Pending', updated_at: new Date().toISOString() }).eq('id', docId);
+    if (filePath) {
+      const { error } = await supabase.storage.from('order-documents').remove([filePath]);
+      if (error) return alert(error.message);
+    }
+    const { error } = await supabase.from('order_documents').update({ file_path: null, file_name: null, status: 'Pending', updated_at: new Date().toISOString() }).eq('id', docId);
+    if (error) return alert(error.message);
     load();
   }
 

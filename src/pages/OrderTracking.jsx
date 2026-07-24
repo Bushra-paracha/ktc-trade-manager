@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
-import { Package, Ship, CheckCircle, Clock, AlertCircle, Download, Phone, Mail, Globe } from 'lucide-react';
+import { AlertCircle, Phone, Mail, Globe } from 'lucide-react';
 
 const STAGES = [
   { key: 'Confirmed',      label: 'Order Confirmed',     icon: '📋', desc: 'Your order has been confirmed and is awaiting advance payment.' },
@@ -16,7 +16,7 @@ function getStageIndex(status) {
 }
 
 export default function OrderTracking() {
-  const { id } = useParams();
+  const { token } = useParams();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -24,17 +24,15 @@ export default function OrderTracking() {
   useEffect(() => {
     async function fetchOrder() {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*, clients(company, contact, country), order_items(*), shipments(*), order_documents(*)')
-        .eq('id', id)
-        .single();
-      if (error) setError('Order not found. Please check your order reference number.');
+      const { data, error } = await supabase.rpc('get_buyer_order_tracking', {
+        p_token: token,
+      });
+      if (error || !data) setError('Order not found. Please check your secure tracking link.');
       else setOrder(data);
       setLoading(false);
     }
-    if (id) fetchOrder();
-  }, [id]);
+    if (token) fetchOrder();
+  }, [token]);
 
   const stageIndex = order ? getStageIndex(order.status) : -1;
 
@@ -65,8 +63,7 @@ export default function OrderTracking() {
     </div>
   );
 
-  const shipment = order.shipments?.[0];
-  const publicDocs = (order.order_documents || []).filter(d => d.file_url && ['Bill of Lading', 'Packing List', 'Certificate of Origin', 'Phytosanitary Certificate'].includes(d.document_type));
+  const shipment = order.shipment;
 
   return (
     <div style={styles.page}>
@@ -81,15 +78,14 @@ export default function OrderTracking() {
       <div style={styles.card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <div style={styles.orderId}>{order.id}</div>
-            <div style={styles.clientName}>{order.clients?.company || order.clients?.contact || 'Valued Customer'}</div>
-            {order.clients?.country && <div style={styles.meta}>📍 {order.clients.country}</div>}
+            <div style={styles.orderId}>{order.order_number}</div>
+            <div style={styles.clientName}>{order.client_name || 'Valued Customer'}</div>
+            {order.country && <div style={styles.meta}>📍 {order.country}</div>}
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ ...styles.statusBadge, background: stageIndex === STAGES.length - 1 ? '#d4edda' : '#fff3cd', color: stageIndex === STAGES.length - 1 ? '#155724' : '#856404' }}>
               {STAGES[stageIndex]?.icon} {order.status}
             </div>
-            {order.total_value && <div style={styles.value}>${Number(order.total_value).toLocaleString()} USD</div>}
           </div>
         </div>
       </div>
@@ -146,7 +142,7 @@ export default function OrderTracking() {
       <div style={styles.card}>
         <h2 style={styles.sectionTitle}>Order Details</h2>
         <div style={styles.detailsGrid}>
-          {order.order_items?.map((item, i) => (
+          {order.items?.map((item, i) => (
             <div key={i} style={styles.detailRow}>
               <span style={styles.detailLabel}>Product</span>
               <span style={styles.detailValue}>{item.product_name} — {item.quantity_mt} MT</span>
@@ -235,24 +231,6 @@ export default function OrderTracking() {
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* Documents */}
-      {publicDocs.length > 0 && (
-        <div style={styles.card}>
-          <h2 style={styles.sectionTitle}>📄 Your Documents</h2>
-          {publicDocs.map((doc, i) => (
-            <div key={i} style={styles.docRow}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{doc.document_type}</div>
-                <div style={{ fontSize: 12, color: '#666' }}>{doc.file_name || doc.document_type}</div>
-              </div>
-              <a href={doc.file_url} target="_blank" rel="noopener noreferrer" style={styles.downloadBtn}>
-                <Download size={14} /> Download
-              </a>
-            </div>
-          ))}
         </div>
       )}
 

@@ -7,7 +7,6 @@ export function useDocumentUpload() {
   // Uploads a file to Storage, then updates the order_documents row with
   // the file path, name, and bumps status to "Uploaded".
   const uploadDocument = useCallback(async (docId, orderId, file, uploaderEmail) => {
-    const ext = file.name.split('.').pop();
     const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
     const path = `${orderId}/${docId}-${Date.now()}-${safeName}`;
 
@@ -31,6 +30,7 @@ export function useDocumentUpload() {
       .eq('id', docId);
 
     if (updateError) {
+      await supabase.storage.from(BUCKET).remove([path]);
       return { error: updateError.message };
     }
 
@@ -50,7 +50,8 @@ export function useDocumentUpload() {
   // Removes the file from Storage and clears the file fields on the row
   const removeDocument = useCallback(async (docId, path) => {
     if (path) {
-      await supabase.storage.from(BUCKET).remove([path]);
+      const { error: storageError } = await supabase.storage.from(BUCKET).remove([path]);
+      if (storageError) return { error: storageError.message };
     }
     const { error } = await supabase
       .from('order_documents')

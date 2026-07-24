@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CalendarDays, FileText, Loader2, PackageCheck, Ship, Trash2 } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Copy, FileText, Loader2, PackageCheck, Ship, Trash2 } from 'lucide-react';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import DocumentChecklistCard from '../components/orders/DocumentChecklistCard';
@@ -12,7 +12,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useDocumentUpload } from '../hooks/useDocumentUpload';
 import { useDocumentActions, useOrder, useOrders, useShipmentActions } from '../hooks/useOrders';
 import { supabase } from '../lib/supabaseClient';
-import { ORDER_STATUS_OPTIONS, getDocsProgress, getStageProgress } from '../lib/orderWorkflow';
+import { ORDER_STATUS_OPTIONS, getDocsProgress, getStageProgress, normalizeStatus } from '../lib/orderWorkflow';
 
 const SHIPMENT_STATUSES = ['Booked', 'Stuffed', 'Departed', 'In Transit', 'Arrived', 'Customs Cleared', 'Delivered'];
 const EMPTY_SHIPMENT = {
@@ -44,6 +44,7 @@ export default function OrderDetail() {
   const [uploadingDocId, setUploadingDocId] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [uploadError, setUploadError] = useState(null);
+  const [trackingMessage, setTrackingMessage] = useState('');
   const fileInputRef = useRef(null);
   const pendingDocIdRef = useRef(null);
 
@@ -61,6 +62,17 @@ export default function OrderDetail() {
   async function handleOrderStatusChange(status) {
     await supabase.from('orders').update({ status }).eq('id', order.id);
     refetch();
+  }
+
+  async function handleCreateTrackingLink() {
+    setTrackingMessage('');
+    const { data, error: tokenError } = await supabase.rpc('rotate_buyer_tracking_token', {
+      p_order_id: order.id,
+    });
+    if (tokenError) return setTrackingMessage(tokenError.message);
+    const url = `${window.location.origin}/track/${data}`;
+    await navigator.clipboard.writeText(url);
+    setTrackingMessage('Secure buyer link copied. The previous link is now invalid.');
   }
 
   async function handleDocStatusChange(docId, status) {
@@ -112,7 +124,7 @@ export default function OrderDetail() {
   async function handleShipmentStatusChange(status) {
     if (!shipment?.id) return;
     await updateShipment(shipment.id, { status });
-    if (status === 'Delivered') await supabase.from('orders').update({ status: 'Delivered' }).eq('id', order.id);
+    if (status === 'Delivered') await supabase.from('orders').update({ status: 'Delivered & Closed' }).eq('id', order.id);
     refetch();
   }
 
@@ -137,16 +149,18 @@ export default function OrderDetail() {
         </div>
         <div className="hero-actions">
           <Badge status={order.status} />
-          <select className="select-input" value={order.status || 'Confirmed'} onChange={(e) => handleOrderStatusChange(e.target.value)}>
+          <select className="select-input" value={normalizeStatus(order.status)} onChange={(e) => handleOrderStatusChange(e.target.value)}>
             {ORDER_STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}
           </select>
+          {isAdminOrDirector && <button className="btn btn-secondary btn-sm" onClick={handleCreateTrackingLink}><Copy size={14} /> Copy buyer link</button>}
           {isAdminOrDirector && <button className="btn btn-secondary btn-sm danger-text" onClick={handleDeleteOrder} disabled={deleting}>{deleting ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={14} />} Delete</button>}
         </div>
       </div>
+      {trackingMessage && <div className="alert alert-info">{trackingMessage}</div>}
 
       <div className="order-health-grid">
         <div className="trade-stat-card"><FileText size={18} /><div><span>Contract Value</span><strong>{formatUSD(order.total_value)}</strong><small>{order.incoterm || 'FOB'} · {order.payment_method || 'LC'}</small></div></div>
-        <div className="trade-stat-card"><PackageCheck size={18} /><div><span>Workflow Progress</span><strong>{stageProgress}%</strong><small>{order.status || 'Confirmed'}</small></div></div>
+        <div className="trade-stat-card"><PackageCheck size={18} /><div><span>Workflow Progress</span><strong>{stageProgress}%</strong><small>{normalizeStatus(order.status)}</small></div></div>
         <div className="trade-stat-card"><CalendarDays size={18} /><div><span>Shipment Deadline</span><strong>{order.shipment_deadline ? new Date(order.shipment_deadline).toLocaleDateString() : '—'}</strong><small>{order.pod_port || 'POD pending'}</small></div></div>
         <div className="trade-stat-card"><Ship size={18} /><div><span>Documents</span><strong>{docsProgress.complete}/{docsProgress.total || 0}</strong><small>{docsProgress.percent}% completed</small></div></div>
       </div>

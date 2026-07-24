@@ -23,7 +23,7 @@ export default function Orders() {
   const [editModal, setEditModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ client_id: '', status: 'Confirmed', incoterm: 'FOB', payment_method: 'LC' });
+  const [form, setForm] = useState({ client_id: '', status: 'Order Confirmed', incoterm: 'FOB', payment_method: 'LC' });
   const [editForm, setEditForm] = useState({});
   const [buyerQuery, setBuyerQuery] = useState('');
 
@@ -59,7 +59,7 @@ export default function Orders() {
     setSaving(false);
     if (error) return alert(`Couldn't create order: ${error}`);
     setModalOpen(false);
-    setForm({ client_id: '', status: 'Confirmed', incoterm: 'FOB', payment_method: 'LC' });
+    setForm({ client_id: '', status: 'Order Confirmed', incoterm: 'FOB', payment_method: 'LC' });
   }
 
 
@@ -83,7 +83,7 @@ export default function Orders() {
   function openEdit(order) {
     setSelectedOrder(order);
     setEditForm({
-      status: order.status || 'Confirmed',
+      status: normalizeStatus(order.status),
       incoterm: order.incoterm || 'FOB',
       payment_method: order.payment_method || 'LC',
       pol_port: order.pol_port || '',
@@ -143,7 +143,7 @@ export default function Orders() {
         </div>
         <div className="header-actions">
           <button className="btn btn-secondary" onClick={exportCsv}><Download size={16} /> Export CSV</button>
-          <button className="btn btn-primary" onClick={() => { setForm({ client_id: '', status: 'Confirmed', incoterm: 'FOB', payment_method: 'LC' }); setBuyerQuery(''); setModalOpen(true); }}><Plus size={16} /> New Order</button>
+          <button className="btn btn-primary" onClick={() => { setForm({ client_id: '', status: 'Order Confirmed', incoterm: 'FOB', payment_method: 'LC' }); setBuyerQuery(''); setModalOpen(true); }}><Plus size={16} /> New Order</button>
         </div>
       </div>
 

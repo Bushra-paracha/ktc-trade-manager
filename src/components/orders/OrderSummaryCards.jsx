@@ -3,7 +3,7 @@ import { formatUSD } from '../../data/mockData';
 import { summarizeOrderValue } from '../../lib/orderWorkflow';
 
 export default function OrderSummaryCards({ orders = [] }) {
-  const activeOrders = orders.filter((order) => !['Delivered', 'Cancelled'].includes(order.status));
+  const activeOrders = orders.filter((order) => !['Delivered', 'Delivered & Closed', 'Closed', 'Cancelled'].includes(order.status));
   const shippingOrders = orders.filter((order) => ['Ready to Ship', 'Shipped', 'In Transit'].includes(order.status));
   const confirmedValue = summarizeOrderValue(orders);
   const countries = new Set(orders.map((order) => order.clients?.country).filter(Boolean));

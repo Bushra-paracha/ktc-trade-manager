@@ -35,17 +35,24 @@ function normalizeDomain(value: string) {
   return value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
 }
 
-function zohoSenders() {
+function configuredZohoEmails() {
   return ZOHO_SENDER_EMAILS.split(',')
     .map((email) => email.trim().toLowerCase())
-    .filter((email) => email.includes('@'))
-    .map((email) => ({
-      id: `zoho:${email}`,
-      email,
-      name: 'NBMT Trading',
-      active: true,
-      provider: 'zoho',
-    }));
+    .filter((email) => email.includes('@'));
+}
+
+function configuredZohoDomains() {
+  return new Set(configuredZohoEmails().map((email) => email.split('@')[1]));
+}
+
+function zohoSenders() {
+  return configuredZohoEmails().map((email) => ({
+    id: `zoho:${email}`,
+    email,
+    name: 'NBMT Trading',
+    active: true,
+    provider: 'zoho',
+  }));
 }
 
 Deno.serve(async (req) => {
@@ -68,13 +75,22 @@ Deno.serve(async (req) => {
           })),
           ...zohoSenders(),
         ],
-        domains: domainData.domains || [],
+        // Zoho-managed domains must never appear in Brevo's authentication workflow.
+        domains: (domainData.domains || []).filter((domain: Record<string, unknown>) => {
+          const name = String(domain.domain_name || domain.domain || domain.name || '').toLowerCase();
+          return !configuredZohoDomains().has(name);
+        }),
       });
     }
 
     if (action === 'add-domain') {
       const cleanDomain = normalizeDomain(domain || '');
       if (!cleanDomain || !cleanDomain.includes('.')) return json({ error: 'Enter a valid domain' }, 400);
+      if (configuredZohoDomains().has(cleanDomain)) {
+        return json({
+          error: `${cleanDomain} is connected through Zoho Mail and must not be authenticated in Brevo.`,
+        }, 409);
+      }
       return json(await brevo('/senders/domains', {
         method: 'POST',
         body: JSON.stringify({ name: cleanDomain }),
@@ -84,6 +100,11 @@ Deno.serve(async (req) => {
     if (action === 'verify-domain') {
       const cleanDomain = normalizeDomain(domain || '');
       if (!cleanDomain) return json({ error: 'Domain is required' }, 400);
+      if (configuredZohoDomains().has(cleanDomain)) {
+        return json({
+          error: `${cleanDomain} is connected through Zoho Mail and does not use Brevo authentication.`,
+        }, 409);
+      }
       await brevo(`/senders/domains/${encodeURIComponent(cleanDomain)}/authenticate`, { method: 'PUT' });
       return json(await brevo(`/senders/domains/${encodeURIComponent(cleanDomain)}`));
     }
@@ -91,6 +112,18 @@ Deno.serve(async (req) => {
     if (action === 'add-sender') {
       const cleanEmail = (email || '').trim().toLowerCase();
       if (!cleanEmail.includes('@')) return json({ error: 'Enter a valid sender email' }, 400);
+      const emailDomain = cleanEmail.split('@')[1];
+      if (configuredZohoDomains().has(emailDomain)) {
+        if (configuredZohoEmails().includes(cleanEmail)) {
+          return json({
+            message: `${cleanEmail} is already connected through Zoho OAuth.`,
+            provider: 'zoho',
+          });
+        }
+        return json({
+          error: `${cleanEmail} belongs to a Zoho-managed domain. Add it to the Zoho sender configuration instead of Brevo.`,
+        }, 409);
+      }
       return json(await brevo('/senders', {
         method: 'POST',
         body: JSON.stringify({ email: cleanEmail, name: (name || 'Kassam Trading Company').trim() }),

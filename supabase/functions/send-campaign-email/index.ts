@@ -29,6 +29,9 @@ const ZOHO_TRADING_REFRESH_TOKEN = Deno.env.get('ZOHO_TRADING_REFRESH_TOKEN');
 const ZOHO_EXPORT_CLIENT_ID = Deno.env.get('ZOHO_EXPORT_CLIENT_ID');
 const ZOHO_EXPORT_CLIENT_SECRET = Deno.env.get('ZOHO_EXPORT_CLIENT_SECRET');
 const ZOHO_EXPORT_REFRESH_TOKEN = Deno.env.get('ZOHO_EXPORT_REFRESH_TOKEN');
+const ZOHO_NAZIMA_CLIENT_ID = Deno.env.get('ZOHO_NAZIMA_CLIENT_ID');
+const ZOHO_NAZIMA_CLIENT_SECRET = Deno.env.get('ZOHO_NAZIMA_CLIENT_SECRET');
+const ZOHO_NAZIMA_REFRESH_TOKEN = Deno.env.get('ZOHO_NAZIMA_REFRESH_TOKEN');
 const ZOHO_ACCOUNTS_URL = Deno.env.get('ZOHO_ACCOUNTS_URL') || 'https://accounts.zoho.com';
 const ZOHO_MAIL_API_URL = Deno.env.get('ZOHO_MAIL_API_URL') || 'https://mail.zoho.com';
 const ZOHO_SENDER_EMAILS = Deno.env.get('ZOHO_SENDER_EMAILS') || '';
@@ -112,6 +115,13 @@ function zohoCredentialsForSender(senderEmail: string) {
       clientId: ZOHO_EXPORT_CLIENT_ID,
       clientSecret: ZOHO_EXPORT_CLIENT_SECRET,
       refreshToken: ZOHO_EXPORT_REFRESH_TOKEN,
+    };
+  }
+  if (normalizedEmail === 'nazima.piracha@nbmttrading.com') {
+    return {
+      clientId: ZOHO_NAZIMA_CLIENT_ID,
+      clientSecret: ZOHO_NAZIMA_CLIENT_SECRET,
+      refreshToken: ZOHO_NAZIMA_REFRESH_TOKEN,
     };
   }
 

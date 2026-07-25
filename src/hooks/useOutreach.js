@@ -3,6 +3,20 @@ import { supabase } from '../lib/supabaseClient';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
+const ZOHO_SENDER_FALLBACK = [
+  'bushra.paracha@nbmttrading.com',
+  'sultan.paracha@nbmttrading.com',
+  'trading@nbmttrading.com',
+  'export@nbmttrading.com',
+  'nazima.piracha@nbmttrading.com',
+].map((email) => ({
+  id: `zoho:${email}`,
+  email,
+  name: 'NBMT Trading',
+  active: true,
+  provider: 'zoho',
+}));
+
 // ---------- Templates ----------
 export function useEmailTemplates() {
   const [templates, setTemplates] = useState([]);
@@ -97,7 +111,12 @@ export function useEmailSenders() {
     setError(null);
     try {
       const data = await callSenderManager('list');
-      setSenders((data.senders || []).filter((sender) => sender.active !== false));
+      const configuredSenders = (data.senders || []).filter((sender) => sender.active !== false);
+      const senderMap = new Map(configuredSenders.map((sender) => [sender.email.toLowerCase(), sender]));
+      for (const sender of ZOHO_SENDER_FALLBACK) {
+        if (!senderMap.has(sender.email)) senderMap.set(sender.email, sender);
+      }
+      setSenders([...senderMap.values()]);
       setDomains(data.domains || []);
     } catch (err) {
       setError(err.message);

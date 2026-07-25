@@ -62,7 +62,10 @@ Deno.serve(async (req) => {
       ]);
       return json({
         senders: [
-          ...(senderData.senders || []).map((sender) => ({ ...sender, provider: 'brevo' })),
+          ...(senderData.senders || []).map((sender: Record<string, unknown>) => ({
+            ...sender,
+            provider: 'brevo',
+          })),
           ...zohoSenders(),
         ],
         domains: domainData.domains || [],
@@ -96,6 +99,6 @@ Deno.serve(async (req) => {
 
     return json({ error: 'Unknown action' }, 400);
   } catch (err) {
-    return json({ error: err.message }, 502);
+    return json({ error: err instanceof Error ? err.message : 'Unexpected error' }, 502);
   }
 });

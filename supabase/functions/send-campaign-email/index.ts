@@ -20,6 +20,9 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 const ZOHO_CLIENT_ID = Deno.env.get('ZOHO_CLIENT_ID');
 const ZOHO_CLIENT_SECRET = Deno.env.get('ZOHO_CLIENT_SECRET');
 const ZOHO_REFRESH_TOKEN = Deno.env.get('ZOHO_REFRESH_TOKEN');
+const ZOHO_SULTAN_CLIENT_ID = Deno.env.get('ZOHO_SULTAN_CLIENT_ID');
+const ZOHO_SULTAN_CLIENT_SECRET = Deno.env.get('ZOHO_SULTAN_CLIENT_SECRET');
+const ZOHO_SULTAN_REFRESH_TOKEN = Deno.env.get('ZOHO_SULTAN_REFRESH_TOKEN');
 const ZOHO_ACCOUNTS_URL = Deno.env.get('ZOHO_ACCOUNTS_URL') || 'https://accounts.zoho.com';
 const ZOHO_MAIL_API_URL = Deno.env.get('ZOHO_MAIL_API_URL') || 'https://mail.zoho.com';
 const ZOHO_SENDER_EMAILS = Deno.env.get('ZOHO_SENDER_EMAILS') || '';
@@ -82,14 +85,32 @@ function normalizeZohoAddress(value: unknown): string | null {
   return null;
 }
 
-async function zohoAccessToken() {
-  if (!ZOHO_CLIENT_ID || !ZOHO_CLIENT_SECRET || !ZOHO_REFRESH_TOKEN) {
-    throw new Error('Zoho OAuth is not configured');
+function zohoCredentialsForSender(senderEmail: string) {
+  const normalizedEmail = senderEmail.trim().toLowerCase();
+  if (normalizedEmail === 'sultan.paracha@nbmttrading.com') {
+    return {
+      clientId: ZOHO_SULTAN_CLIENT_ID,
+      clientSecret: ZOHO_SULTAN_CLIENT_SECRET,
+      refreshToken: ZOHO_SULTAN_REFRESH_TOKEN,
+    };
+  }
+
+  return {
+    clientId: ZOHO_CLIENT_ID,
+    clientSecret: ZOHO_CLIENT_SECRET,
+    refreshToken: ZOHO_REFRESH_TOKEN,
+  };
+}
+
+async function zohoAccessToken(senderEmail: string) {
+  const credentials = zohoCredentialsForSender(senderEmail);
+  if (!credentials.clientId || !credentials.clientSecret || !credentials.refreshToken) {
+    throw new Error(`Zoho OAuth is not configured for ${senderEmail}`);
   }
   const params = new URLSearchParams({
-    refresh_token: ZOHO_REFRESH_TOKEN,
-    client_id: ZOHO_CLIENT_ID,
-    client_secret: ZOHO_CLIENT_SECRET,
+    refresh_token: credentials.refreshToken,
+    client_id: credentials.clientId,
+    client_secret: credentials.clientSecret,
     grant_type: 'refresh_token',
   });
   const response = await fetch(`${ZOHO_ACCOUNTS_URL}/oauth/v2/token`, {
@@ -125,7 +146,7 @@ async function sendViaZoho(
   html: string,
   attachment?: { name: string; bytes: Uint8Array },
 ) {
-  const token = await zohoAccessToken();
+  const token = await zohoAccessToken(message.sender_email);
   const accounts = await zohoRequest('/api/accounts', token);
   const account = (accounts.data || []).find((candidate: ZohoAccount) => {
     const addresses = [

@@ -1,4 +1,5 @@
 const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY');
+const ZOHO_SENDER_EMAILS = Deno.env.get('ZOHO_SENDER_EMAILS') || '';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -34,6 +35,19 @@ function normalizeDomain(value: string) {
   return value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
 }
 
+function zohoSenders() {
+  return ZOHO_SENDER_EMAILS.split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter((email) => email.includes('@'))
+    .map((email) => ({
+      id: `zoho:${email}`,
+      email,
+      name: 'NBMT Trading',
+      active: true,
+      provider: 'zoho',
+    }));
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
@@ -47,7 +61,10 @@ Deno.serve(async (req) => {
         brevo('/senders/domains'),
       ]);
       return json({
-        senders: senderData.senders || [],
+        senders: [
+          ...(senderData.senders || []).map((sender) => ({ ...sender, provider: 'brevo' })),
+          ...zohoSenders(),
+        ],
         domains: domainData.domains || [],
       });
     }

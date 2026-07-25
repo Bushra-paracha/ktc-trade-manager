@@ -6,11 +6,13 @@ import {
   Loader2,
   Mail,
   MousePointerClick,
+  Paperclip,
   Plus,
   RefreshCw,
   Reply,
   Send,
   Settings,
+  Trash2,
   XCircle,
 } from 'lucide-react';
 import Badge from '../components/Badge';
@@ -20,9 +22,11 @@ import {
   addEmailDomain,
   addEmailSender,
   createEmailTemplate,
+  deleteEmailTemplate,
   renderTemplate,
   sendOutreachEmails,
   syncTemplatesFromBrevo,
+  uploadTemplatePdf,
   useEmailSenders,
   useEmailMessages,
   useEmailTemplates,
@@ -97,11 +101,12 @@ export default function Outreach() {
   const [senderEmail, setSenderEmail] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  const [attachment, setAttachment] = useState(null);
   const [sending, setSending] = useState(false);
   const [sendResults, setSendResults] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
-  const [templateDraft, setTemplateDraft] = useState({ name: '', subject: '', body: '' });
+  const [templateDraft, setTemplateDraft] = useState({ name: '', subject: '', body: '', pdf: null });
   const [templateSaving, setTemplateSaving] = useState(false);
   const [managementMessage, setManagementMessage] = useState('');
   const [domainDraft, setDomainDraft] = useState('');
@@ -163,6 +168,9 @@ export default function Outreach() {
     const template = templates.find((item) => item.id === id);
     setSubject(template?.subject || '');
     setBody(template?.body_html || '');
+    setAttachment(template?.attachment_path
+      ? { path: template.attachment_path, name: template.attachment_name || 'Attachment.pdf' }
+      : null);
   }
 
   function closeCompose() {
@@ -172,6 +180,7 @@ export default function Outreach() {
     setTemplateId('');
     setSubject('');
     setBody('');
+    setAttachment(null);
     setSendResults(null);
   }
 
@@ -203,6 +212,8 @@ export default function Outreach() {
       subjectTemplate: subject,
       bodyTemplate: body,
       senderEmail,
+      attachmentPath: attachment?.path || null,
+      attachmentName: attachment?.name || null,
     });
     setSending(false);
     setSendResults(results);
@@ -212,10 +223,22 @@ export default function Outreach() {
   async function handleCreateTemplate() {
     if (!templateDraft.name.trim() || !templateDraft.subject.trim() || !templateDraft.body.trim()) return;
     setTemplateSaving(true);
+    let uploadedPdf = null;
+    if (templateDraft.pdf) {
+      const upload = await uploadTemplatePdf(templateDraft.pdf);
+      if (upload.error) {
+        setTemplateSaving(false);
+        setManagementMessage(upload.error);
+        return;
+      }
+      uploadedPdf = upload.data;
+    }
     const { data, error } = await createEmailTemplate({
       name: templateDraft.name,
       subject: templateDraft.subject,
       bodyHtml: templateDraft.body,
+      attachmentPath: uploadedPdf?.path || null,
+      attachmentName: uploadedPdf?.name || null,
     });
     setTemplateSaving(false);
     if (error) {
@@ -226,9 +249,22 @@ export default function Outreach() {
     setTemplateId(data.id);
     setSubject(data.subject);
     setBody(data.body_html);
-    setTemplateDraft({ name: '', subject: '', body: '' });
+    setAttachment(uploadedPdf);
+    setTemplateDraft({ name: '', subject: '', body: '', pdf: null });
     setTemplateOpen(false);
     setManagementMessage('Email template saved and selected.');
+  }
+
+  async function handleDeleteTemplate(template) {
+    if (!window.confirm(`Delete the template "${template.name}"? This cannot be undone.`)) return;
+    const { error } = await deleteEmailTemplate(template);
+    if (error) {
+      setManagementMessage(error);
+      return;
+    }
+    if (templateId === template.id) applyTemplate('');
+    await refetchTemplates();
+    setManagementMessage('Email template deleted.');
   }
 
   async function runSenderAction(action) {
@@ -258,7 +294,7 @@ export default function Outreach() {
       <div className="page-header">
         <div>
           <h1>Email Outreach</h1>
-          <p>Compose buyer emails and track Brevo delivery, opens, bounces, and replies.</p>
+          <p>Send KTC email through Brevo or NBMT email through Zoho, with one shared CRM history.</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn btn-secondary" onClick={() => setTemplateOpen(true)}>
@@ -359,10 +395,10 @@ export default function Outreach() {
               onChange={(event) => setSenderEmail(event.target.value)}
               disabled={sendersLoading || !senders.length}
             >
-              {!senders.length && <option value="">No verified Brevo senders available</option>}
+              {!senders.length && <option value="">No configured senders available</option>}
               {senders.map((sender) => (
                 <option key={sender.id || sender.email} value={sender.email}>
-                  {sender.name ? `${sender.name} — ` : ''}{sender.email}
+                  {sender.name ? `${sender.name} — ` : ''}{sender.email} ({sender.provider === 'zoho' ? 'Zoho' : 'Brevo'})
                 </option>
               ))}
             </select>
@@ -433,6 +469,13 @@ export default function Outreach() {
               placeholder="Dear {{contact}}, …"
             />
           </FormRow>
+          {attachment && (
+            <div className="card padded" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Paperclip size={16} />
+              <span style={{ flex: 1 }}>{attachment.name}</span>
+              <button className="btn btn-secondary" onClick={() => setAttachment(null)}>Remove</button>
+            </div>
+          )}
           <div className="cell-muted" style={{ fontSize: 12 }}>
             Merge tags: <code>{'{{company}}'}</code> <code>{'{{contact}}'}</code> <code>{'{{country}}'}</code> <code>{'{{city}}'}</code>
           </div>
@@ -502,6 +545,17 @@ export default function Outreach() {
               placeholder="Dear {{contact}}, …"
             />
           </FormRow>
+          <FormRow label="PDF attachment (optional, maximum 10 MB)">
+            <input
+              className="select-input"
+              type="file"
+              accept="application/pdf,.pdf"
+              onChange={(event) => setTemplateDraft((current) => ({
+                ...current,
+                pdf: event.target.files?.[0] || null,
+              }))}
+            />
+          </FormRow>
           <div className="cell-muted" style={{ fontSize: 12 }}>
             Available merge tags: <code>{'{{company}}'}</code> <code>{'{{contact}}'}</code> <code>{'{{country}}'}</code> <code>{'{{city}}'}</code>
           </div>
@@ -516,6 +570,32 @@ export default function Outreach() {
               Save template
             </button>
           </div>
+          {!!templates.length && (
+            <div>
+              <h4 style={{ margin: '6px 0' }}>Saved templates</h4>
+              {templates.map((template) => (
+                <div
+                  key={template.id}
+                  className="card padded"
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <strong>{template.name}</strong>
+                    {template.attachment_name && (
+                      <div className="cell-muted"><Paperclip size={12} /> {template.attachment_name}</div>
+                    )}
+                  </div>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => handleDeleteTemplate(template)}
+                    aria-label={`Delete ${template.name}`}
+                  >
+                    <Trash2 size={16} /> Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </Modal>
 
@@ -526,10 +606,10 @@ export default function Outreach() {
             {senders.map((sender) => (
               <div key={sender.id || sender.email} className="card padded" style={{ marginBottom: 8 }}>
                 <strong>{sender.name || 'Kassam Trading Company'}</strong>
-                <div className="cell-muted">{sender.email}</div>
+                <div className="cell-muted">{sender.email} · {sender.provider === 'zoho' ? 'Zoho OAuth' : 'Brevo'}</div>
               </div>
             ))}
-            {!senders.length && <div className="cell-muted">No active Brevo sender addresses found.</div>}
+            {!senders.length && <div className="cell-muted">No active sender addresses found.</div>}
           </div>
 
           <div>

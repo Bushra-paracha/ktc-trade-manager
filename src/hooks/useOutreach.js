@@ -29,7 +29,9 @@ export function useEmailTemplates() {
   return { templates, loading, error, refetch: fetchTemplates };
 }
 
-export async function createEmailTemplate({ name, subject, bodyHtml }) {
+export async function createEmailTemplate({
+  name, subject, bodyHtml, attachmentPath = null, attachmentName = null,
+}) {
   const { data, error } = await supabase
     .from('email_templates')
     .insert([{
@@ -37,11 +39,35 @@ export async function createEmailTemplate({ name, subject, bodyHtml }) {
       subject: subject.trim(),
       body_html: bodyHtml,
       category: 'Custom',
+      attachment_path: attachmentPath,
+      attachment_name: attachmentName,
     }])
     .select()
     .single();
 
   return { data, error: error?.message || null };
+}
+
+export async function deleteEmailTemplate(template) {
+  const { error } = await supabase.from('email_templates').delete().eq('id', template.id);
+  if (!error && template.attachment_path) {
+    await supabase.storage.from('email-attachments').remove([template.attachment_path]);
+  }
+  return { error: error?.message || null };
+}
+
+export async function uploadTemplatePdf(file) {
+  if (file.type !== 'application/pdf') return { error: 'Only PDF files are supported.' };
+  if (file.size > 10 * 1024 * 1024) return { error: 'PDF must be 10 MB or smaller.' };
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const path = `${window.crypto.randomUUID()}/${safeName}`;
+  const { error } = await supabase.storage
+    .from('email-attachments')
+    .upload(path, file, { contentType: 'application/pdf', upsert: false });
+  return error
+    ? { error: error.message }
+    : { data: { path, name: file.name } };
 }
 
 async function callSenderManager(action, payload = {}) {
@@ -187,7 +213,10 @@ export function renderTemplate(str, client) {
 
 // Creates one email_messages row per selected client, then calls the
 // send-campaign-email Edge Function for each one.
-export async function sendOutreachEmails({ clients, subjectTemplate, bodyTemplate, senderEmail, campaignId = null }) {
+export async function sendOutreachEmails({
+  clients, subjectTemplate, bodyTemplate, senderEmail, campaignId = null,
+  attachmentPath = null, attachmentName = null,
+}) {
   const results = [];
 
   for (const client of clients) {
@@ -205,6 +234,8 @@ export async function sendOutreachEmails({ clients, subjectTemplate, bodyTemplat
         subject,
         body_html: html,
         sender_email: senderEmail,
+        attachment_path: attachmentPath,
+        attachment_name: attachmentName,
         status: 'Pending',
       }])
       .select()

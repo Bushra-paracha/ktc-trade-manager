@@ -24,6 +24,24 @@ const ZOHO_ACCOUNTS_URL = Deno.env.get('ZOHO_ACCOUNTS_URL') || 'https://accounts
 const ZOHO_MAIL_API_URL = Deno.env.get('ZOHO_MAIL_API_URL') || 'https://mail.zoho.com';
 const ZOHO_SENDER_EMAILS = Deno.env.get('ZOHO_SENDER_EMAILS') || '';
 
+type EmailMessage = {
+  sender_email: string;
+  to_email: string;
+  to_name?: string | null;
+  subject: string;
+  campaign_id?: string | null;
+};
+
+type ZohoSendMailDetail = {
+  fromAddress?: string;
+};
+
+type ZohoAccount = {
+  accountId?: string;
+  emailAddress?: string;
+  sendMailDetails?: ZohoSendMailDetail[];
+};
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -81,14 +99,20 @@ async function zohoRequest(path: string, token: string, init: RequestInit = {}) 
   return data;
 }
 
-async function sendViaZoho(message, html: string, attachment?: { name: string; bytes: Uint8Array }) {
+async function sendViaZoho(
+  message: EmailMessage,
+  html: string,
+  attachment?: { name: string; bytes: Uint8Array },
+) {
   const token = await zohoAccessToken();
   const accounts = await zohoRequest('/api/accounts', token);
-  const account = (accounts.data || []).find((candidate) => {
+  const account = (accounts.data || []).find((candidate: ZohoAccount) => {
     const addresses = [
       candidate.emailAddress,
-      ...(candidate.sendMailDetails || []).map((detail) => detail.fromAddress),
-    ].filter(Boolean).map((address) => address.toLowerCase());
+      ...(candidate.sendMailDetails || []).map((detail: ZohoSendMailDetail) => detail.fromAddress),
+    ]
+      .filter((address): address is string => Boolean(address))
+      .map((address) => address.toLowerCase());
     return addresses.includes(message.sender_email.toLowerCase());
   });
   if (!account?.accountId) throw new Error('The selected sender is not available in the connected Zoho account');
@@ -134,6 +158,10 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      throw new Error('Supabase service configuration is missing');
+    }
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // 1. Fetch the message row
@@ -174,16 +202,19 @@ Deno.serve(async (req) => {
     let providerMessageId = null;
     let provider = 'zoho';
     if (useZoho) {
-      providerMessageId = await sendViaZoho(message, html, attachment);
+      providerMessageId = await sendViaZoho(message as EmailMessage, html, attachment);
     } else {
       provider = 'brevo';
+      if (!BREVO_API_KEY) throw new Error('BREVO_API_KEY is not configured');
+      const brevoApiKey = BREVO_API_KEY;
       // Never trust a sender address supplied through the browser/database alone.
       const sendersRes = await fetch('https://api.brevo.com/v3/senders', {
-        headers: { 'api-key': BREVO_API_KEY, 'Accept': 'application/json' },
+        headers: { 'api-key': brevoApiKey, 'Accept': 'application/json' },
       });
       const sendersData = await sendersRes.json().catch(() => ({}));
       const senderAllowed = sendersRes.ok && (sendersData.senders || []).some(
-        (sender) => sender.active !== false && sender.email?.toLowerCase() === senderEmail
+        (sender: { active?: boolean; email?: string }) =>
+          sender.active !== false && sender.email?.toLowerCase() === senderEmail,
       );
       if (!senderAllowed) {
         await supabase.from('email_messages').update({ status: 'Failed' }).eq('id', messageId);
@@ -196,7 +227,7 @@ Deno.serve(async (req) => {
       const brevoRes = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       headers: {
-        'api-key': BREVO_API_KEY,
+        'api-key': brevoApiKey,
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
@@ -258,7 +289,7 @@ Deno.serve(async (req) => {
     );
   } catch (err) {
     return new Response(
-      JSON.stringify({ error: err.message }),
+      JSON.stringify({ error: err instanceof Error ? err.message : 'Unexpected error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

@@ -33,12 +33,12 @@ type EmailMessage = {
 };
 
 type ZohoSendMailDetail = {
-  fromAddress?: string;
+  fromAddress?: unknown;
 };
 
 type ZohoAccount = {
   accountId?: string;
-  emailAddress?: string;
+  emailAddress?: unknown;
   sendMailDetails?: ZohoSendMailDetail[];
 };
 
@@ -65,6 +65,21 @@ function isZohoSender(email: string) {
   const normalizedEmail = email.trim().toLowerCase();
   return normalizedEmail.endsWith('@nbmttrading.com')
     || configuredZohoSenders().includes(normalizedEmail);
+}
+
+function normalizeZohoAddress(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized.includes('@') ? normalized : null;
+  }
+  if (!value || typeof value !== 'object') return null;
+
+  const address = value as Record<string, unknown>;
+  for (const key of ['address', 'emailAddress', 'fromAddress', 'mailId']) {
+    const normalized = normalizeZohoAddress(address[key]);
+    if (normalized) return normalized;
+  }
+  return null;
 }
 
 async function zohoAccessToken() {
@@ -117,9 +132,9 @@ async function sendViaZoho(
       candidate.emailAddress,
       ...(candidate.sendMailDetails || []).map((detail: ZohoSendMailDetail) => detail.fromAddress),
     ]
-      .filter((address): address is string => Boolean(address))
-      .map((address) => address.toLowerCase());
-    return addresses.includes(message.sender_email.toLowerCase());
+      .map(normalizeZohoAddress)
+      .filter((address): address is string => address !== null);
+    return addresses.includes(message.sender_email.trim().toLowerCase());
   });
   if (!account?.accountId) throw new Error('The selected sender is not available in the connected Zoho account');
 

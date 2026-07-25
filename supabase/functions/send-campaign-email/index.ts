@@ -126,7 +126,8 @@ async function sendViaZoho(
   let attachments;
   if (attachment) {
     const form = new FormData();
-    form.append('attach', new Blob([attachment.bytes], { type: 'application/pdf' }), attachment.name);
+    const ownedAttachmentBytes = new Uint8Array(attachment.bytes);
+    form.append('attach', new Blob([ownedAttachmentBytes.buffer], { type: 'application/pdf' }), attachment.name);
     const uploaded = await zohoRequest(`/api/accounts/${account.accountId}/messages/attachments`, token, {
       method: 'POST',
       body: form,

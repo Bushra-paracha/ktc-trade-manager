@@ -203,7 +203,9 @@ export default function Outreach() {
     const recipientLabel = selectedClients.length === 1
       ? `${selectedClients[0].company || selectedClients[0].email} (${selectedClients[0].email})`
       : `${selectedClients.length} selected buyers`;
-    if (!window.confirm(`Send this email through Brevo to ${recipientLabel}?`)) return;
+    const selectedSender = senders.find((sender) => sender.email === senderEmail);
+    const providerLabel = selectedSender?.provider === 'zoho' ? 'Zoho Mail' : 'Brevo';
+    if (!window.confirm(`Send this email through ${providerLabel} to ${recipientLabel}?`)) return;
 
     setSending(true);
     setSendResults(null);
@@ -276,7 +278,7 @@ export default function Outreach() {
         : action === 'sender'
           ? await addEmailSender(senderDraft)
           : await verifyEmailDomain(action);
-      setManagementMessage(data.message || 'Brevo settings updated.');
+      setManagementMessage(data.message || 'Sender settings updated.');
       if (action === 'domain') setDomainDraft('');
       if (action === 'sender') setSenderDraft({ name: 'Kassam Trading Company', email: '' });
       await refetchSenders();
@@ -601,6 +603,14 @@ export default function Outreach() {
 
       <Modal open={sendersOpen} onClose={() => setSendersOpen(false)} title="Senders & Domains">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div className="card padded" style={{ background: 'var(--color-surface-alt)' }}>
+            <strong>NBMT uses Zoho Mail</strong>
+            <p className="cell-muted" style={{ margin: '6px 0 0' }}>
+              NBMT addresses listed below are connected through Zoho OAuth. Do not add nbmttrading.com
+              as a Brevo domain; Zoho does not require Brevo authentication.
+            </p>
+          </div>
+
           <div>
             <h4 style={{ marginBottom: 8 }}>Active sender addresses</h4>
             {senders.map((sender) => (
@@ -613,7 +623,7 @@ export default function Outreach() {
           </div>
 
           <div>
-            <h4 style={{ marginBottom: 8 }}>Add sender address</h4>
+            <h4 style={{ marginBottom: 8 }}>Add a Brevo sender (KTC only)</h4>
             <div className="grid-2">
               <FormRow label="Display name">
                 <input
@@ -638,12 +648,12 @@ export default function Outreach() {
               onClick={() => runSenderAction('sender')}
               disabled={managingSender || !senderDraft.email.includes('@')}
             >
-              <Plus size={16} /> Add sender
+              <Plus size={16} /> Add Brevo sender
             </button>
           </div>
 
           <div>
-            <h4 style={{ marginBottom: 8 }}>Sender domains</h4>
+            <h4 style={{ marginBottom: 8 }}>Brevo domains (KTC only)</h4>
             {domains.map((domain) => {
               const domainName = domain.domain_name || domain.domain || domain.name;
               const ready = domain.authenticated || domain.verified;
@@ -690,8 +700,8 @@ export default function Outreach() {
               </button>
             </div>
             <p className="cell-muted" style={{ fontSize: 12, marginTop: 8 }}>
-              After adding a domain, copy the DNS records shown by Brevo into your domain provider, then use Check DNS.
-              Only authenticated domains should be used for outreach.
+              Use this only for a domain that should send through Brevo, such as kassamtradingcompany.com.
+              NBMT is connected through Zoho and should not be added here.
             </p>
           </div>
         </div>

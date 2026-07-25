@@ -61,6 +61,12 @@ function configuredZohoSenders() {
     .filter((email) => email.includes('@'));
 }
 
+function isZohoSender(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  return normalizedEmail.endsWith('@nbmttrading.com')
+    || configuredZohoSenders().includes(normalizedEmail);
+}
+
 async function zohoAccessToken() {
   if (!ZOHO_CLIENT_ID || !ZOHO_CLIENT_SECRET || !ZOHO_REFRESH_TOKEN) {
     throw new Error('Zoho OAuth is not configured');
@@ -178,8 +184,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    const senderEmail = message.sender_email?.toLowerCase();
-    const useZoho = configuredZohoSenders().includes(senderEmail);
+    const senderEmail = String(message.sender_email || '').trim().toLowerCase();
+    if (!senderEmail.includes('@')) {
+      await supabase.from('email_messages').update({ status: 'Failed' }).eq('id', messageId);
+      return new Response(
+        JSON.stringify({ error: 'A valid sender email is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+    // NBMT is a Zoho-managed domain. Never allow an NBMT sender to fall
+    // through to Brevo merely because a runtime allowlist is stale.
+    const useZoho = isZohoSender(senderEmail);
 
     let attachment;
     if (message.attachment_path) {

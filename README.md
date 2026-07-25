@@ -133,8 +133,11 @@ with the same two public environment variables configured in the hosting platfor
 
 Phase 3 adds database-backed SLA timers, WhatsApp notification outbox processing,
 and repeat-order reminders 30 days after delivery. Deploy
-`supabase/functions/dispatch-whatsapp`, configure the three non-browser secrets
-documented in `.env.example`, and invoke the function hourly with an
+`supabase/functions/dispatch-whatsapp`, configure the four server-side secrets
+documented in `.env.example`, then call the function with `?mode=health` to
+verify Wati connectivity and the required templates without sending. Invoke
+the function hourly without that query parameter only after a controlled test, with an
 `Authorization: Bearer <AUTOMATION_SECRET>` header. Create and approve the
-`order_status_update` and `repeat_order_reminder` templates in WhatsApp Manager
-before enabling the schedule.
+`order_status_update` and `repeat_order_reminder` templates in Wati before
+enabling the schedule. The status template must define the named parameters
+`order_id` and `status`; the reminder template must define `order_id`.

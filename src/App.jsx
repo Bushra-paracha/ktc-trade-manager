@@ -17,6 +17,7 @@ const OrderDetail = lazy(() => import('./pages/OrderDetail'));
 const Documents = lazy(() => import('./pages/Documents'));
 const Payments = lazy(() => import('./pages/Payments'));
 const Outreach = lazy(() => import('./pages/Outreach'));
+const Tasks = lazy(() => import('./pages/Tasks'));
 const Settings = lazy(() => import('./pages/Settings'));
 
 function PageLoader() {
@@ -65,6 +66,7 @@ export default function App() {
                       <Route path="/documents" element={<Documents />} />
                       <Route path="/payments" element={<Payments />} />
                       <Route path="/outreach" element={<Outreach />} />
+                      <Route path="/tasks" element={<Tasks />} />
                       <Route path="/settings" element={<Settings />} />
                       <Route path="/shipments" element={<Navigate to="/orders" replace />} />
                       <Route path="*" element={<Navigate to="/" replace />} />

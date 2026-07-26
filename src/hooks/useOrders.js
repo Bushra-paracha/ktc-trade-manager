@@ -142,6 +142,45 @@ export function useShipmentActions() {
   return { createShipment, updateShipment };
 }
 
+// ---------- Order item CRUD ----------
+export function useOrderItemActions() {
+  const syncOrderItems = useCallback(async (orderId, items) => {
+    const { data: existing, error: fetchError } = await supabase
+      .from('order_items')
+      .select('id')
+      .eq('order_id', orderId);
+    if (fetchError) return { error: fetchError.message };
+
+    const keptIds = new Set(items.filter((item) => item.id).map((item) => item.id));
+    const removedIds = (existing || []).map((item) => item.id).filter((id) => !keptIds.has(id));
+    if (removedIds.length) {
+      const { error } = await supabase.from('order_items').delete().in('id', removedIds);
+      if (error) return { error: error.message };
+    }
+
+    for (const item of items) {
+      const quantity = Number(item.quantity_mt || 0);
+      const unitPrice = Number(item.unit_price || 0);
+      const payload = {
+        order_id: orderId,
+        product_id: item.product_id || null,
+        product_name: item.product_name?.trim() || 'Product',
+        quantity_mt: quantity,
+        unit_price: unitPrice,
+        line_total: quantity * unitPrice,
+      };
+      const query = item.id
+        ? supabase.from('order_items').update(payload).eq('id', item.id)
+        : supabase.from('order_items').insert([payload]);
+      const { error } = await query;
+      if (error) return { error: error.message };
+    }
+    return { success: true };
+  }, []);
+
+  return { syncOrderItems };
+}
+
 // ---------- Document checklist actions ----------
 export function useDocumentActions() {
   const updateDocumentStatus = useCallback(async (docId, status) => {

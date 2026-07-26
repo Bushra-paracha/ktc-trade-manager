@@ -1,5 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+const GRAPH_API_VERSION = 'v23.0'
+const WABA_ID = '1308239590982353'
 const REQUIRED_TEMPLATES = ['order_status_update', 'repeat_order_reminder'] as const
 
 type NotificationJob = {
@@ -27,20 +29,12 @@ function normalizePhoneNumber(value: string) {
   return value.replace(/\D/g, '')
 }
 
-function watiParameters(payload: Record<string, unknown>) {
-  return Object.entries(payload).map(([name, value]) => ({
-    name,
-    value: String(value ?? ''),
-  }))
-}
-
-async function watiRequest(
-  endpoint: string,
+async function metaRequest(
   token: string,
   path: string,
   init: RequestInit = {},
 ) {
-  return fetch(`${endpoint}${path}`, {
+  return fetch(`https://graph.facebook.com/${GRAPH_API_VERSION}${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -50,32 +44,68 @@ async function watiRequest(
   })
 }
 
-async function checkWatiTemplates(
-  endpoint: string,
+async function checkMetaConnection(
   token: string,
-  channelNumber: string,
+  phoneNumberId: string,
 ) {
-  const response = await watiRequest(
-    endpoint,
-    token,
-    `/api/v1/getMessageTemplates?pageSize=100&pageNumber=1&channelPhoneNumber=${encodeURIComponent(channelNumber)}`,
-  )
-  const responseBody = await response.text()
-  if (!response.ok) {
-    throw new Error(`Wati template check ${response.status}: ${responseBody.slice(0, 500)}`)
+  const [phoneResponse, templateResponse] = await Promise.all([
+    metaRequest(
+      token,
+      `/${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating`,
+    ),
+    metaRequest(
+      token,
+      `/${WABA_ID}/message_templates?fields=name,status,language&limit=100`,
+    ),
+  ])
+
+  const phoneBody = await phoneResponse.text()
+  if (!phoneResponse.ok) {
+    throw new Error(`Meta phone check ${phoneResponse.status}: ${phoneBody.slice(0, 500)}`)
   }
 
-  const normalizedBody = responseBody.toLowerCase()
-  const templates = REQUIRED_TEMPLATES.map((name) => ({
-    name,
-    present: normalizedBody.includes(name),
-  }))
+  const templateBody = await templateResponse.text()
+  if (!templateResponse.ok) {
+    throw new Error(`Meta template check ${templateResponse.status}: ${templateBody.slice(0, 500)}`)
+  }
+
+  const phone = JSON.parse(phoneBody)
+  const templateData = JSON.parse(templateBody)?.data ?? []
+  const templates = REQUIRED_TEMPLATES.map((name) => {
+    const match = templateData.find(
+      (template: { name?: string }) => template.name === name,
+    )
+    return {
+      name,
+      present: Boolean(match),
+      status: match?.status ?? null,
+      language: match?.language ?? null,
+    }
+  })
 
   return {
     connected: true,
+    provider: 'meta_cloud_api',
+    phone: {
+      displayPhoneNumber: phone.display_phone_number ?? null,
+      verifiedName: phone.verified_name ?? null,
+      qualityRating: phone.quality_rating ?? null,
+    },
     templates,
-    ready: templates.every(({ present }) => present),
+    ready: templates.every(({ present, status }) =>
+      present && status === 'APPROVED'
+    ),
   }
+}
+
+function metaTemplateComponents(payload: Record<string, unknown>) {
+  return [{
+    type: 'body',
+    parameters: Object.values(payload).map((value) => ({
+      type: 'text',
+      text: String(value ?? ''),
+    })),
+  }]
 }
 
 Deno.serve(async (request) => {
@@ -83,13 +113,11 @@ Deno.serve(async (request) => {
     return new Response('Unauthorized', { status: 401 })
   }
 
-  let watiEndpoint: string
-  let watiToken: string
-  let watiChannelNumber: string
+  let metaToken: string
+  let metaPhoneNumberId: string
   try {
-    watiEndpoint = requiredEnv('WATI_API_ENDPOINT').replace(/\/+$/, '')
-    watiToken = requiredEnv('WATI_API_TOKEN')
-    watiChannelNumber = normalizePhoneNumber(requiredEnv('WATI_CHANNEL_NUMBER'))
+    metaToken = requiredEnv('META_WHATSAPP_ACCESS_TOKEN')
+    metaPhoneNumberId = requiredEnv('META_WHATSAPP_PHONE_NUMBER_ID')
   } catch (configurationError) {
     return Response.json({ error: String(configurationError) }, { status: 503 })
   }
@@ -97,16 +125,20 @@ Deno.serve(async (request) => {
   const url = new URL(request.url)
   if (url.searchParams.get('mode') === 'health') {
     try {
-      return Response.json(await checkWatiTemplates(watiEndpoint, watiToken, watiChannelNumber))
+      return Response.json(await checkMetaConnection(metaToken, metaPhoneNumberId))
     } catch (healthError) {
-      return Response.json({ connected: false, error: String(healthError) }, { status: 502 })
+      return Response.json({
+        connected: false,
+        provider: 'meta_cloud_api',
+        error: String(healthError),
+      }, { status: 502 })
     }
   }
 
-  const templateHealth = await checkWatiTemplates(watiEndpoint, watiToken, watiChannelNumber)
+  const templateHealth = await checkMetaConnection(metaToken, metaPhoneNumberId)
   if (!templateHealth.ready) {
     return Response.json({
-      error: 'Required Wati templates are missing',
+      error: 'Required Meta WhatsApp templates are missing or not approved',
       templates: templateHealth.templates,
     }, { status: 503 })
   }
@@ -146,26 +178,33 @@ Deno.serve(async (request) => {
       const recipient = normalizePhoneNumber(job.recipient)
       if (!recipient) throw new Error('Notification recipient is not a valid phone number')
 
-      const response = await watiRequest(
-        watiEndpoint,
-        watiToken,
-        `/api/v1/sendTemplateMessage?whatsappNumber=${encodeURIComponent(recipient)}`,
+      const response = await metaRequest(
+        metaToken,
+        `/${metaPhoneNumberId}/messages`,
         {
           method: 'POST',
           body: JSON.stringify({
-            template_name: job.template_name,
-            broadcast_name: `ktc_${job.template_name}_${job.id}`,
-            channel_number: watiChannelNumber,
-            parameters: watiParameters(job.payload ?? {}),
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: recipient,
+            type: 'template',
+            template: {
+              name: job.template_name,
+              language: { code: 'en' },
+              components: metaTemplateComponents(job.payload ?? {}),
+            },
           }),
         },
       )
       const responseBody = await response.text()
       if (!response.ok) {
-        throw new Error(`Wati ${response.status}: ${responseBody.slice(0, 500)}`)
+        throw new Error(`Meta ${response.status}: ${responseBody.slice(0, 500)}`)
       }
+
       await supabase.from('notification_outbox').update({
-        status: 'sent', sent_at: new Date().toISOString(), last_error: null,
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+        last_error: null,
       }).eq('id', job.id)
       sent += 1
     } catch (sendError) {
@@ -180,5 +219,9 @@ Deno.serve(async (request) => {
     }
   }
 
-  return Response.json({ processed: jobs?.length ?? 0, sent })
+  return Response.json({
+    provider: 'meta_cloud_api',
+    processed: jobs?.length ?? 0,
+    sent,
+  })
 })

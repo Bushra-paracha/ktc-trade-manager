@@ -6,6 +6,7 @@ import {
   FolderOpen,
   CircleDollarSign,
   Mail,
+  CheckSquare,
 } from 'lucide-react';
 
 export const navGroups = [
@@ -18,6 +19,7 @@ export const navGroups = [
       { to: '/documents', label: 'Documents', icon: FolderOpen },
       { to: '/payments', label: 'Payments', icon: CircleDollarSign },
       { to: '/outreach', label: 'Email Outreach', icon: Mail },
+      { to: '/tasks', label: 'Tasks', icon: CheckSquare },
       { to: '/settings', label: 'Settings', icon: Settings },
     ],
   },
@@ -30,6 +32,7 @@ export const navItems = [
   { to: '/documents', label: 'Documents', icon: FolderOpen },
   { to: '/payments', label: 'Payments', icon: CircleDollarSign },
   { to: '/outreach', label: 'Email Outreach', icon: Mail },
+  { to: '/tasks', label: 'Tasks', icon: CheckSquare },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 

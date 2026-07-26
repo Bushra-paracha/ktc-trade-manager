@@ -4,6 +4,7 @@ import { ArrowLeft, BellRing, CalendarDays, Copy, Edit2, FileText, Loader2, Pack
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import DocumentChecklistCard from '../components/orders/DocumentChecklistCard';
+import ExportProcessTracker from '../components/orders/ExportProcessTracker';
 import OrderActionPanel from '../components/orders/OrderActionPanel';
 import ShipmentSummaryCard from '../components/orders/ShipmentSummaryCard';
 import StageTracker from '../components/orders/StageTracker';
@@ -16,7 +17,7 @@ import { generateProformaInvoice } from '../lib/generateProformaInvoice';
 import { supabase } from '../lib/supabaseClient';
 import { ORDER_STATUS_OPTIONS, getDocsProgress, getStageProgress, normalizeStatus } from '../lib/orderWorkflow';
 
-const TABS = ['overview', 'production', 'shipment', 'documents', 'payments', 'activity'];
+const TABS = ['overview', 'process', 'production', 'shipment', 'documents', 'payments', 'activity'];
 const SHIPMENT_STATUSES = ['Booked', 'Stuffed', 'Departed', 'In Transit', 'Arrived', 'Customs Cleared', 'Delivered'];
 const EMPTY_SHIPMENT = { container_number: '', seal_number: '', shipping_line: '', vessel_voyage: '', pol: '', pod: '', etd: '', eta: '', bl_number: '', status: 'Booked' };
 const EMPTY_PAYMENT = { payment_type: 'Advance', amount: '', currency: 'USD', status: 'Due', bank_reference: '', payment_date: '', notes: '' };
@@ -289,6 +290,10 @@ export default function OrderDetail() {
         <button className="btn btn-primary mobile-full-button" onClick={saveProduction} disabled={saving}>{saving ? 'Saving…' : 'Save progress'}</button>
       </div>}
 
+      {activeTab === 'process' && <div className="card focused-tab-card">
+        <ExportProcessTracker orderId={order.id} onMessage={setMessage} onActivityChange={fetchRelated} />
+      </div>}
+
       {activeTab === 'shipment' && <div className="focused-tab-grid"><ShipmentSummaryCard shipment={shipment} onAddShipment={openShipmentForm} onStatusChange={async (status) => { await updateShipment(shipment.id, { status }); if (status === 'Delivered') await updateStatus('Delivered & Closed'); refetch(); }} statusOptions={SHIPMENT_STATUSES} />
         {shipment && <button className="btn btn-secondary mobile-full-button" onClick={openShipmentForm}>Edit shipment details</button>}</div>}
 
@@ -354,4 +359,4 @@ export default function OrderDetail() {
 
 function DetailRow({ label, value }) { return <div className="detail-row"><span>{label}</span><strong>{value}</strong></div>; }
 function Stat({ icon: Icon, label, value, helper }) { return <div className="trade-stat-card"><Icon size={18} /><div><span>{label}</span><strong>{value}</strong><small>{helper}</small></div></div>; }
-function activityLabel(event) { return ({ order_created: 'Order created', inquiry_converted: 'Inquiry converted', status_changed: 'Status changed', tracking_link_rotated: 'Buyer link rotated' })[event.event_type] || event.event_type.replaceAll('_', ' '); }
+function activityLabel(event) { return ({ order_created: 'Order created', inquiry_converted: 'Inquiry converted', status_changed: 'Status changed', tracking_link_rotated: 'Buyer link rotated', process_step_changed: `Process step ${event.metadata?.step_number || ''} updated` })[event.event_type] || event.event_type.replaceAll('_', ' '); }

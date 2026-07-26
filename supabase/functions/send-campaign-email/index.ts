@@ -54,6 +54,12 @@ type ZohoAccount = {
   sendMailDetails?: ZohoSendMailDetail[];
 };
 
+type ZohoAttachment = {
+  storeName: string;
+  attachmentName: string;
+  attachmentPath: string;
+};
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -171,6 +177,18 @@ async function zohoRequest(path: string, token: string, init: RequestInit = {}) 
   return data;
 }
 
+function zohoAttachmentFromUpload(value: unknown): ZohoAttachment | null {
+  if (!value || typeof value !== 'object') return null;
+
+  const uploaded = value as Record<string, unknown>;
+  const storeName = typeof uploaded.storeName === 'string' ? uploaded.storeName : null;
+  const attachmentName = typeof uploaded.attachmentName === 'string' ? uploaded.attachmentName : null;
+  const attachmentPath = typeof uploaded.attachmentPath === 'string' ? uploaded.attachmentPath : null;
+
+  if (!storeName || !attachmentName || !attachmentPath) return null;
+  return { storeName, attachmentName, attachmentPath };
+}
+
 async function sendViaZoho(
   message: EmailMessage,
   html: string,
@@ -189,24 +207,31 @@ async function sendViaZoho(
   });
   if (!account?.accountId) throw new Error('The selected sender is not available in the connected Zoho account');
 
-  let attachments;
+  let attachments: ZohoAttachment[] | undefined;
   if (attachment) {
     const form = new FormData();
     const ownedAttachmentBytes = new Uint8Array(attachment.bytes);
     form.append('attach', new Blob([ownedAttachmentBytes.buffer], { type: 'application/pdf' }), attachment.name);
-    const uploaded = await zohoRequest(`/api/accounts/${account.accountId}/messages/attachments`, token, {
+    const uploaded = await zohoRequest(`/api/accounts/${account.accountId}/messages/attachments?uploadType=multipart&isInline=false`, token, {
       method: 'POST',
       body: form,
     });
-    attachments = uploaded.data ? (Array.isArray(uploaded.data) ? uploaded.data : [uploaded.data]) : undefined;
+    const uploadedAttachments = Array.isArray(uploaded.data) ? uploaded.data : [uploaded.data];
+    attachments = uploadedAttachments
+      .map(zohoAttachmentFromUpload)
+      .filter((item): item is ZohoAttachment => item !== null);
+
+    if (attachments.length !== uploadedAttachments.length || attachments.length === 0) {
+      throw new Error('Zoho uploaded the PDF but returned incomplete attachment metadata');
+    }
   }
 
   const sent = await zohoRequest(`/api/accounts/${account.accountId}/messages`, token, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      fromAddress: message.sender_email,
-      toAddress: message.to_email,
+      fromAddress: message.sender_email.trim(),
+      toAddress: message.to_email.trim(),
       subject: message.subject,
       content: html,
       mailFormat: 'html',

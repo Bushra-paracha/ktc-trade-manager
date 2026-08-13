@@ -12,6 +12,7 @@ const OrderTracking = lazy(() => import('./pages/OrderTracking'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Clients = lazy(() => import('./pages/Clients'));
 const ClientProfile = lazy(() => import('./pages/ClientProfile'));
+const Inquiries = lazy(() => import('./pages/Inquiries'));
 const Orders = lazy(() => import('./pages/Orders'));
 const OrderDetail = lazy(() => import('./pages/OrderDetail'));
 const Documents = lazy(() => import('./pages/Documents'));

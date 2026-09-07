@@ -10,7 +10,6 @@ import {
   Clock3,
   Copy,
   Download,
-  Flag,
   Loader2,
   Mail,
   MessageCircle,
@@ -18,7 +17,6 @@ import {
   RefreshCw,
   Search,
   Sparkles,
-  Target,
   Trash2,
   Users,
 } from 'lucide-react';

@@ -1,0 +1,268 @@
+diff --git a/src/data/navItems.js b/src/data/navItems.js
+index 93435a5..e004389 100644
+--- a/src/data/navItems.js
++++ b/src/data/navItems.js
+@@ -39,13 +39,4 @@ export const navItems = [
+   { to: '/settings', label: 'Settings', icon: Settings },
+ ];
+ 
+-export const MOBILE_PRIMARY_COUNT = 4;lipboardList },
+-  { to: '/clients', label: 'Clients', icon: Users },
+-  { to: '/documents', label: 'Documents', icon: FolderOpen },
+-  { to: '/payments', label: 'Payments', icon: CircleDollarSign },
+-  { to: '/outreach', label: 'Email Outreach', icon: Mail },
+-  { to: '/tasks', label: 'Tasks', icon: CheckSquare },
+-  { to: '/settings', label: 'Settings', icon: Settings },
+-];
+-
+ export const MOBILE_PRIMARY_COUNT = 4;
+diff --git a/src/hooks/useOutreach.js b/src/hooks/useOutreach.js
+index cd6776b..b166465 100644
+--- a/src/hooks/useOutreach.js
++++ b/src/hooks/useOutreach.js
+@@ -329,6 +329,68 @@ export async function retryMessage(message) {
+   }
+ }
+ 
++// ---------- Last-emailed lookup ----------
++// Lightweight hook for pages (like Clients) that just need to know when a
++// client was last successfully emailed, without loading full message/reply data.
++const SENT_STATUSES = ['Sent', 'Delivered', 'Opened', 'Clicked', 'Replied'];
++
++export function useLastEmailedByClient() {
++  const [lastEmailedByClient, setLastEmailedByClient] = useState(new Map());
++  const [loading, setLoading] = useState(true);
++
++  const fetchData = useCallback(async () => {
++    setLoading(true);
++    const { data: rows, error } = await supabase
++      .from('email_messages')
++      .select('client_id, created_at, status')
++      .in('status', SENT_STATUSES)
++      .order('created_at', { ascending: false });
++
++    if (!error && rows) {
++      const map = new Map();
++      for (const row of rows) {
++        // Rows are ordered most-recent-first, so the first time we see a
++        // client_id is their most recent successfully sent email.
++        if (row.client_id && !map.has(row.client_id)) {
++          map.set(row.client_id, row.created_at);
++        }
++      }
++      setLastEmailedByClient(map);
++    }
++    setLoading(false);
++  }, []);
++
++  useEffect(() => {
++    fetchData();
++  }, [fetchData]);
++
++  return { lastEmailedByClient, loading, refetch: fetchData };
++}
++
++// Builds the same client_id -> last-sent-date map from an already-loaded
++// list of email_messages (e.g. from useEmailMessages), so pages that already
++// have messages loaded don't need a second query.
++export function buildLastEmailedMap(messages) {
++  const map = new Map();
++  for (const message of messages) {
++    if (!message.client_id || !SENT_STATUSES.includes(message.status)) continue;
++    const existing = map.get(message.client_id);
++    if (!existing || new Date(message.created_at) > new Date(existing)) {
++      map.set(message.client_id, message.created_at);
++    }
++  }
++  return map;
++}
++
++export function formatDaysAgo(dateStr) {
++  if (!dateStr) return null;
++  const diffMs = Date.now() - new Date(dateStr).getTime();
++  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
++  if (days <= 0) return 'today';
++  if (days === 1) return '1 day ago';
++  return `${days} days ago`;
++}
++
+ // Retries every currently Failed message in one go, returning a summary.
+ export async function retryAllFailed(failedMessages) {
+   const results = [];
+diff --git a/src/hooks/usePublicInquiries.js b/src/hooks/usePublicInquiries.js
+index 04dee29..c863cfa 100644
+--- a/src/hooks/usePublicInquiries.js
++++ b/src/hooks/usePublicInquiries.js
+@@ -77,7 +77,7 @@ export function usePublicInquiries() {
+       products_interest: submission.product_interest ? [submission.product_interest] : [],
+       est_volume: submission.quantity_estimate || null,
+       status: 'New',
+-      score: 50,
++      score: 0,
+       notes: submission.message || null,
+     };
+ 
+diff --git a/src/pages/Clients.jsx b/src/pages/Clients.jsx
+index 9b63b37..9cae462 100644
+--- a/src/pages/Clients.jsx
++++ b/src/pages/Clients.jsx
+@@ -24,6 +24,7 @@ import { supabase } from '../lib/supabaseClient';
+ import BuyerActionCenter from '../components/buyers/BuyerActionCenter';
+ import BuyerSummaryCards from '../components/buyers/BuyerSummaryCards';
+ import LeadScoreBadge, { getLeadTier } from '../components/buyers/LeadScoreBadge';
++import { formatDaysAgo, useLastEmailedByClient } from '../hooks/useOutreach';
+ 
+ const STATUSES = ['New', 'Contacted', 'Engaged', 'Negotiating', 'Won', 'Lost', 'Dormant'];
+ const SOURCES = [
+@@ -51,7 +52,7 @@ const EMPTY_FORM = {
+   products_interest: '',
+   est_volume: '',
+   status: 'New',
+-  score: 50,
++  score: 0,
+   assigned_to: '',
+   notes: '',
+ };
+@@ -101,6 +102,7 @@ export default function Clients() {
+     bulkAddClients,
+   } = useClients();
+   const { isAdminOrDirector } = useAuth();
++  const { lastEmailedByClient } = useLastEmailedByClient();
+ 
+   const [search, setSearch] = useState('');
+   const [status, setStatus] = useState('');
+@@ -368,6 +370,11 @@ export default function Clients() {
+                       <div className="buyer-contact-strip">
+                         <span><Mail size={13} /> {client.email || 'No email'}</span>
+                         <span><MessageCircle size={13} /> {client.phone || 'No WhatsApp'}</span>
++                        <span style={lastEmailedByClient.has(client.id) && (Date.now() - new Date(lastEmailedByClient.get(client.id)).getTime()) < 1000 * 60 * 60 * 24 * 7 ? { color: 'var(--color-danger)' } : undefined}>
++                          {lastEmailedByClient.has(client.id)
++                            ? `Emailed ${formatDaysAgo(lastEmailedByClient.get(client.id))}`
++                            : 'Never emailed'}
++                        </span>
+                       </div>
+                     </div>
+                   </Link>
+diff --git a/src/pages/Outreach.jsx b/src/pages/Outreach.jsx
+index 1bb2b82..d385544 100644
+--- a/src/pages/Outreach.jsx
++++ b/src/pages/Outreach.jsx
+@@ -31,6 +31,8 @@ import {
+   useEmailMessages,
+   useEmailTemplates,
+   verifyEmailDomain,
++  buildLastEmailedMap,
++  formatDaysAgo,
+ } from '../hooks/useOutreach';
+ 
+ function FormRow({ label, children }) {
+@@ -131,6 +133,8 @@ export default function Outreach() {
+     [clients, selectedClientIds],
+   );
+ 
++  const lastEmailedByClient = useMemo(() => buildLastEmailedMap(messages), [messages]);
++
+   const filteredClients = useMemo(() => {
+     const query = recipientSearch.trim().toLowerCase();
+     if (!query) return clients;
+@@ -448,6 +452,21 @@ export default function Outreach() {
+                   <span>
+                     <span className="cell-strong">{client.company || client.contact || 'Unnamed buyer'}</span>
+                     <span className="cell-muted" style={{ display: 'block' }}>{client.email || 'No email saved'}</span>
++                    <span
++                      className="cell-muted"
++                      style={{
++                        display: 'block',
++                        fontSize: 11.5,
++                        color: lastEmailedByClient.has(client.id)
++                          && (Date.now() - new Date(lastEmailedByClient.get(client.id)).getTime()) < 1000 * 60 * 60 * 24 * 7
++                          ? 'var(--color-danger)'
++                          : undefined,
++                      }}
++                    >
++                      {lastEmailedByClient.has(client.id)
++                        ? `Last emailed ${formatDaysAgo(lastEmailedByClient.get(client.id))}`
++                        : 'Never emailed'}
++                    </span>
+                   </span>
+                 </label>
+               ))}
+diff --git a/src/pages/Tasks.jsx b/src/pages/Tasks.jsx
+index 86edee3..ade49c5 100644
+--- a/src/pages/Tasks.jsx
++++ b/src/pages/Tasks.jsx
+@@ -10,7 +10,6 @@ import {
+   Clock3,
+   Copy,
+   Download,
+-  Flag,
+   Loader2,
+   Mail,
+   MessageCircle,
+@@ -18,7 +17,6 @@ import {
+   RefreshCw,
+   Search,
+   Sparkles,
+-  Target,
+   Trash2,
+   Users,
+ } from 'lucide-react';
+diff --git a/supabase/migrations/202609070001_public_inquiry_submissions.sql b/supabase/migrations/202609070001_public_inquiry_submissions.sql
+new file mode 100644
+index 0000000..30b9180
+--- /dev/null
++++ b/supabase/migrations/202609070001_public_inquiry_submissions.sql
+@@ -0,0 +1,53 @@
++-- Creates the public_inquiry_submissions table (if it doesn't already exist)
++-- and fixes Row-Level-Security so that:
++--   1. Anonymous visitors on the public /quote page CAN insert a submission.
++--   2. Only logged-in staff can view, update, or delete submissions.
++--
++-- This table was previously created/managed outside of migrations, which is
++-- almost certainly why no rows were showing up: with RLS enabled and no
++-- INSERT policy for the "anon" role, Supabase silently rejects every insert
++-- from the public form.
++
++create table if not exists public.public_inquiry_submissions (
++  id uuid primary key default gen_random_uuid(),
++  full_name text not null,
++  company_name text,
++  email text not null,
++  phone text,
++  country text,
++  product_interest text,
++  quantity_estimate text,
++  message text,
++  status text not null default 'New',
++  created_at timestamptz not null default now()
++);
++
++alter table public.public_inquiry_submissions enable row level security;
++
++drop policy if exists "Public can submit inquiries" on public.public_inquiry_submissions;
++create policy "Public can submit inquiries"
++  on public.public_inquiry_submissions
++  for insert
++  to anon
++  with check (true);
++
++drop policy if exists "Staff can view inquiries" on public.public_inquiry_submissions;
++create policy "Staff can view inquiries"
++  on public.public_inquiry_submissions
++  for select
++  to authenticated
++  using (true);
++
++drop policy if exists "Staff can update inquiries" on public.public_inquiry_submissions;
++create policy "Staff can update inquiries"
++  on public.public_inquiry_submissions
++  for update
++  to authenticated
++  using (true);
++
++drop policy if exists "Staff can delete inquiries" on public.public_inquiry_submissions;
++create policy "Staff can delete inquiries"
++  on public.public_inquiry_submissions
++  for delete
++  to authenticated
++  using (true);

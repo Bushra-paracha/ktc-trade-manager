@@ -329,6 +329,68 @@ export async function retryMessage(message) {
   }
 }
 
+// ---------- Last-emailed lookup ----------
+// Lightweight hook for pages (like Clients) that just need to know when a
+// client was last successfully emailed, without loading full message/reply data.
+const SENT_STATUSES = ['Sent', 'Delivered', 'Opened', 'Clicked', 'Replied'];
+
+export function useLastEmailedByClient() {
+  const [lastEmailedByClient, setLastEmailedByClient] = useState(new Map());
+  const [loading, setLoading] = useState(true);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    const { data: rows, error } = await supabase
+      .from('email_messages')
+      .select('client_id, created_at, status')
+      .in('status', SENT_STATUSES)
+      .order('created_at', { ascending: false });
+
+    if (!error && rows) {
+      const map = new Map();
+      for (const row of rows) {
+        // Rows are ordered most-recent-first, so the first time we see a
+        // client_id is their most recent successfully sent email.
+        if (row.client_id && !map.has(row.client_id)) {
+          map.set(row.client_id, row.created_at);
+        }
+      }
+      setLastEmailedByClient(map);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return { lastEmailedByClient, loading, refetch: fetchData };
+}
+
+// Builds the same client_id -> last-sent-date map from an already-loaded
+// list of email_messages (e.g. from useEmailMessages), so pages that already
+// have messages loaded don't need a second query.
+export function buildLastEmailedMap(messages) {
+  const map = new Map();
+  for (const message of messages) {
+    if (!message.client_id || !SENT_STATUSES.includes(message.status)) continue;
+    const existing = map.get(message.client_id);
+    if (!existing || new Date(message.created_at) > new Date(existing)) {
+      map.set(message.client_id, message.created_at);
+    }
+  }
+  return map;
+}
+
+export function formatDaysAgo(dateStr) {
+  if (!dateStr) return null;
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (days <= 0) return 'today';
+  if (days === 1) return '1 day ago';
+  return `${days} days ago`;
+}
+
 // Retries every currently Failed message in one go, returning a summary.
 export async function retryAllFailed(failedMessages) {
   const results = [];

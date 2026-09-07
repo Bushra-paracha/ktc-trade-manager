@@ -77,7 +77,7 @@ export function usePublicInquiries() {
       products_interest: submission.product_interest ? [submission.product_interest] : [],
       est_volume: submission.quantity_estimate || null,
       status: 'New',
-      score: 50,
+      score: 0,
       notes: submission.message || null,
     };
 

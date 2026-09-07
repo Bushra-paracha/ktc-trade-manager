@@ -24,6 +24,7 @@ import { supabase } from '../lib/supabaseClient';
 import BuyerActionCenter from '../components/buyers/BuyerActionCenter';
 import BuyerSummaryCards from '../components/buyers/BuyerSummaryCards';
 import LeadScoreBadge, { getLeadTier } from '../components/buyers/LeadScoreBadge';
+import { formatDaysAgo, useLastEmailedByClient } from '../hooks/useOutreach';
 
 const STATUSES = ['New', 'Contacted', 'Engaged', 'Negotiating', 'Won', 'Lost', 'Dormant'];
 const SOURCES = [
@@ -50,8 +51,8 @@ const EMPTY_FORM = {
   source: 'B2B Platform',
   products_interest: '',
   est_volume: '',
-  status: 'New',
-  score: 50,
+    status: 'New',
+  score: 0,
   assigned_to: '',
   notes: '',
 };
@@ -101,6 +102,7 @@ export default function Clients() {
     bulkAddClients,
   } = useClients();
   const { isAdminOrDirector } = useAuth();
+  const { lastEmailedByClient } = useLastEmailedByClient();
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
@@ -368,6 +370,11 @@ export default function Clients() {
                       <div className="buyer-contact-strip">
                         <span><Mail size={13} /> {client.email || 'No email'}</span>
                         <span><MessageCircle size={13} /> {client.phone || 'No WhatsApp'}</span>
+                        <span style={lastEmailedByClient.has(client.id) && (Date.now() - new Date(lastEmailedByClient.get(client.id)).getTime()) < 1000 * 60 * 60 * 24 * 7 ? { color: 'var(--color-danger)' } : undefined}>
+                          {lastEmailedByClient.has(client.id)
+                            ? `Emailed ${formatDaysAgo(lastEmailedByClient.get(client.id))}`
+                            : 'Never emailed'}
+                        </span>
                       </div>
                     </div>
                   </Link>

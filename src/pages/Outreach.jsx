@@ -31,6 +31,8 @@ import {
   useEmailMessages,
   useEmailTemplates,
   verifyEmailDomain,
+  buildLastEmailedMap,
+  formatDaysAgo,
 } from '../hooks/useOutreach';
 
 function FormRow({ label, children }) {
@@ -130,6 +132,8 @@ export default function Outreach() {
     () => clients.filter((client) => selectedClientIds.includes(client.id) && client.email),
     [clients, selectedClientIds],
   );
+
+  const lastEmailedByClient = useMemo(() => buildLastEmailedMap(messages), [messages]);
 
   const filteredClients = useMemo(() => {
     const query = recipientSearch.trim().toLowerCase();
@@ -445,9 +449,24 @@ export default function Outreach() {
                     onChange={() => toggleClient(client.id)}
                     disabled={!client.email}
                   />
-                  <span>
+                  <span>                  
                     <span className="cell-strong">{client.company || client.contact || 'Unnamed buyer'}</span>
                     <span className="cell-muted" style={{ display: 'block' }}>{client.email || 'No email saved'}</span>
+                    <span
+                      className="cell-muted"
+                      style={{
+                        display: 'block',
+                        fontSize: 11.5,
+                        color: lastEmailedByClient.has(client.id)
+                          && (Date.now() - new Date(lastEmailedByClient.get(client.id)).getTime()) < 1000 * 60 * 60 * 24 * 7
+                          ? 'var(--color-danger)'
+                          : undefined,
+                      }}
+                    >
+                      {lastEmailedByClient.has(client.id)
+                        ? `Last emailed ${formatDaysAgo(lastEmailedByClient.get(client.id))}`
+                        : 'Never emailed'}
+                    </span>
                   </span>
                 </label>
               ))}
